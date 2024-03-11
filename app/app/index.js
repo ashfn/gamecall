@@ -10,6 +10,7 @@ export default function Page() {
     const border = " border-2 rounded-lg border-[#ffffff] border-solid"
     return(
         <View>
+
             <Text className="text-2xl text-minty-4 text-center">Welcome to GameCall</Text>
             <View className="mt-24 flex flex-row ">
                 <Link push href="/register" className={link+border}>Register</Link>

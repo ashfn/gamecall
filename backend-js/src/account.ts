@@ -32,6 +32,15 @@ async function updateRefresh(account: User): Promise<string>{
 
 export async function refreshToken(refreshToken: string){
 
+    console.log(refreshToken)
+
+    if(refreshToken==undefined || refreshToken==null){
+        return {
+            "status":0,
+            "message":"Invalid refresh token"
+        }
+    }
+
     if(!refreshToken.includes("G")){
         return {
             "status":0,
@@ -119,8 +128,14 @@ export async function register(username: string, email: string, password: string
     const checkIdentical = await prisma.user.findFirst({
         where: {
             OR: [
-                {username: username},
-                {email: email}
+                {username: {
+                    equals: username,
+                    mode: "insensitive"
+                }},
+                {email: {
+                    equals: email,
+                    mode: "insensitive"
+                }},
             ]
         }
     })
@@ -128,13 +143,13 @@ export async function register(username: string, email: string, password: string
     const hashedPassword = await bcrypt.hash(password, 10)
 
     if(checkIdentical!=null){
-        if(checkIdentical.email==email){
+        if(checkIdentical.email.toUpperCase()==email.toUpperCase()){
             return {
                 "status":0,
                 "message":"That email has already been used"
             }
         }
-        if(checkIdentical.username==username){
+        if(checkIdentical.username.toUpperCase()==username.toUpperCase()){
             return {
                 "status":0,
                 "message":"That username has already been used"
@@ -152,8 +167,7 @@ export async function register(username: string, email: string, password: string
     })
 
     return {
-        "status":1,
-        "data": user
+        "status":1
     }
 }
 
@@ -168,8 +182,14 @@ export async function login(usernameOrEmail: string, password: string){
     const account = await prisma.user.findFirst({
         where: {
             OR: [
-                {username: usernameOrEmail},
-                {email: usernameOrEmail}
+                {username: {
+                    equals: usernameOrEmail,
+                    mode: "insensitive"
+                }},
+                {email: {
+                    equals: usernameOrEmail,
+                    mode: "insensitive"
+                }},
             ]
         }
     })

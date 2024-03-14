@@ -33,7 +33,7 @@ app.post('/login', (req: Request, res: Response) => {
     })
 })
 
-app.get('/refresh', (req: Request, res: Response) => {
+app.post('/refresh', (req: Request, res: Response) => {
     refreshToken(req.body.refreshToken).then((accessToken) => {
         res.send(JSON.stringify(accessToken))
     })
@@ -46,6 +46,10 @@ app.get('/debug', authenticateToken, (req: Request, res: Response) => {
     }else{
         res.send(JSON.stringify(res.locals.user))
     }
+})
+
+app.get('/debug2', (req: Request, res: Response) => {
+    res.send(JSON.stringify({"hello":0}))
 })
 
 app.get('/logout', authenticateToken, (req: Request, res: Response) => {

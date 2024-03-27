@@ -3,7 +3,8 @@ import express, { Request, Response } from 'express';
 import { PrismaClient, Role, User } from '@prisma/client'
 import { register, login, refreshToken, logout } from './account';
 import dotenv from "dotenv"
-import { authenticateToken } from './middleware';
+import { authenticateToken, userDetails } from './middleware';
+import { getAvatarRoute } from './profile/profileRoute';
 
 dotenv.config()
 
@@ -39,7 +40,7 @@ app.post('/refresh', (req: Request, res: Response) => {
     })
 })
 
-app.get('/debug', authenticateToken, (req: Request, res: Response) => {
+app.get('/debug', [authenticateToken, userDetails], (req: Request, res: Response) => {
     const user: User = res.locals.user
     if(user.role==Role.ADMIN){
         res.send("Super secret thing!!")
@@ -48,9 +49,13 @@ app.get('/debug', authenticateToken, (req: Request, res: Response) => {
     }
 })
 
-app.get('/debug2', (req: Request, res: Response) => {
-    res.send(JSON.stringify({"hello":0}))
+app.get('/account', [authenticateToken, userDetails], (req: Request, res: Response) => {
+    res.send(JSON.stringify(res.locals.user))
 })
+
+// app.get('/profile/:userId/', [authenticateToken], getProfileRoute)
+app.get('/avatar/:userId/', [], getAvatarRoute)
+
 
 app.get('/logout', authenticateToken, (req: Request, res: Response) => {
     const user: User = res.locals.user

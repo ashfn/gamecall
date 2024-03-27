@@ -18,11 +18,36 @@ enum Role {
   ADMIN
 }
 
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model User {
   id Int @id @default(autoincrement())
   username String
   email String
   password String
   role Role @default(USER)
+  displayName String @default("no username")
   refreshToken String @default("none")
+  profileImage ProfileImage?
 }
+
+model ProfileImage {
+  userId Int @id
+  user User @relation(fields: [userId], references: [id])
+  avatar Bytes
+}
+
+
+
+
+// Add badges after games are working :)
+// model Badge {
+//   name String @id @default(cuid())
+//   color String
+//   description String
+//   iconUrl String
+// }

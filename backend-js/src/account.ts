@@ -3,6 +3,7 @@ import { prisma } from "."
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import crypto from "crypto"
+import { getBase64Profile } from "./profile/generate";
 
 function createJwt(user: User){
     const secret = process.env.JWT_SECRET
@@ -13,7 +14,7 @@ function createJwt(user: User){
     return jwt.sign({
         "id":user.id,
         "role":user.role
-    }, secret, {expiresIn: '30s'})
+    }, secret, {expiresIn: '5m'})
 }
 
 async function updateRefresh(account: User): Promise<string>{
@@ -162,7 +163,14 @@ export async function register(username: string, email: string, password: string
         data: {
             username: username,
             email: email,
-            password: hashedPassword
+            password: hashedPassword,
+            displayName: username,
+            role: "USER",
+            profileImage: {
+                create: {
+                   avatar: Buffer.from(await getBase64Profile(username), 'base64')
+                }
+            }
         }
     })
 

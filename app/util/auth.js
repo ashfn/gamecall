@@ -1,7 +1,18 @@
 import * as SecureStore from 'expo-secure-store'
 
+import { prefix } from "./config"
+
+export async function getAccountDetails(){
+    try{
+        const details = await authFetch(`${prefix}/account`, {})
+        return details
+    }catch (err) {
+        return null
+    }
+}
+
 export async function login(usernameOrEmail, password){
-    const response = await fetch("http://192.168.68.111:3000/login", {
+    const response = await fetch(`${prefix}/login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -20,16 +31,19 @@ export async function login(usernameOrEmail, password){
 
     
     if(json.status==1){
+        await SecureStore.deleteItemAsync("accessToken")
+        await SecureStore.deleteItemAsync("refreshToken")
         await SecureStore.setItemAsync("refreshToken", json.data)
+        await refreshAccessToken()
         return ""
     }else{
-        return json.data
+        return json.message
     }
 
 }
 
 export async function signup(username, email, password){
-    const response = await fetch("http://192.168.68.111:3000/account", {
+    const response = await fetch(`${prefix}/account`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -55,11 +69,18 @@ export async function signup(username, email, password){
     }
 }
 
+export async function logout(){
+    await SecureStore.deleteItemAsync("accessToken")
+    await SecureStore.deleteItemAsync("refreshToken")
+
+    await fetch(`${prefix}/logout`)
+}
+
 export async function refreshAccessToken(){
 
     const refreshToken = await SecureStore.getItemAsync("refreshToken")
 
-    const response = await fetch("http://192.168.68.111:3000/refresh", {
+    const response = await fetch(`${prefix}/refresh`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -72,6 +93,7 @@ export async function refreshAccessToken(){
     const json = await response.json()
 
     if(json.status==1){
+        await SecureStore.deleteItemAsync("accessToken")
         await SecureStore.setItemAsync("accessToken", json.data)
         return true
     }else{
@@ -81,6 +103,8 @@ export async function refreshAccessToken(){
 }
 
 export async function authFetch(url, options){
+
+    console.log("authFetch :))")
 
     const accessToken = await SecureStore.getItemAsync("accessToken")
 
@@ -98,7 +122,7 @@ export async function authFetch(url, options){
             throw new Error("Refresh token invalid, could not refresh access token")
         }
         console.log("Token expired :( Trying to refresh")
-        accessToken = await refreshAccessToken()
+        await refreshAccessToken()
 
         options["authfetchalreadydone"]=true
 
@@ -106,8 +130,3 @@ export async function authFetch(url, options){
     }
     return response
 }
-
-// authFetch("http://192.168.68.111:3000/debug", {}).then((res) => {
-//     console.log(res.status)
-//     console.log("2")
-// } )

@@ -10,6 +10,12 @@ module.exports = {
           3: "#78cc78",
           4: "#96e396"
         },
+        "pastel": {
+          1: "#abffe3",
+          2: "#abf0ff",
+          3: "#abc5ff",
+          4: "#b0abff",
+        },
         "bg":"#0a0a0a"
       },
     }

@@ -52,7 +52,7 @@ export default function Page() {
                     
                     <View className="mb-32">
                         <View className="pl-6 flex justify-between mb-24 ">
-                            <Pressable onPressIn={() => router.replace("/")}>
+                            <Pressable onPressIn={() => router.back()}>
                                 <AntDesign name="left" size={30} color="#96e396"/>
                             </Pressable>
                             <Text className="text-2xl text-minty-4 text-center ">Create account</Text>

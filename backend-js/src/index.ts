@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
 
 import { PrismaClient, Role, User } from '@prisma/client'
-import { register, login, refreshToken, logout } from './account';
+import { register, login, refreshToken, logout } from './account/account';
 import dotenv from "dotenv"
 import { authenticateToken, userDetails } from './middleware';
-import { getAvatarRoute } from './profile/profileRoute';
+import { getAvatarRoute, setAvatarRoute } from './profile/profileRoute';
 
 dotenv.config()
 
@@ -12,7 +12,7 @@ export const prisma = new PrismaClient()
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({limit: '2mb'}));
 
 const port = process.env.PORT || 3000;
 // passworAd1
@@ -52,6 +52,8 @@ app.get('/debug', [authenticateToken, userDetails], (req: Request, res: Response
 app.get('/account', [authenticateToken, userDetails], (req: Request, res: Response) => {
     res.send(JSON.stringify(res.locals.user))
 })
+
+app.post('/avatar/:userId/', [authenticateToken, userDetails], setAvatarRoute)
 
 // app.get('/profile/:userId/', [authenticateToken], getProfileRoute)
 app.get('/avatar/:userId/', [], getAvatarRoute)

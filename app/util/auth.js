@@ -104,8 +104,6 @@ export async function refreshAccessToken(){
 
 export async function authFetch(url, options){
 
-    console.log("authFetch :))")
-
     const accessToken = await SecureStore.getItemAsync("accessToken")
 
     if(options["headers"]==undefined){
@@ -113,7 +111,6 @@ export async function authFetch(url, options){
     }else{
         options["headers"]["Authorization"]=accessToken
     }
-
 
     const response = await fetch(url, options)
     if(response.status==499){

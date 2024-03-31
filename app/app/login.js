@@ -24,15 +24,7 @@ export default function Page() {
         setWaiting(true)
         login(account, password).then((response) => {
             if(response==""){
-                console.log("successful log in")
-                // successful signup, let's log in
-                authFetch("http://192.168.68.111:3000/debug", {})
-                    .then(response => response.text())
-                    .then((response) => {
-                        console.log(response)
-                        setErrorMessages([response])
-                        setWaiting(false)
-                    })
+                router.navigate(".")
             }else{
                 setErrorMessages([response])
                 setWaiting(false)
@@ -45,7 +37,7 @@ export default function Page() {
             <SafeAreaView>
                 <View>
                     <View className="pl-6 flex justify-between mb-24 ">
-                        <Pressable onPressIn={() => router.replace("/")}>
+                        <Pressable onPressIn={() => router.back()}>
                             <AntDesign name="left" size={30} color="#96e396"/>
                         </Pressable>
                         <Text className="text-2xl text-minty-4 text-center ">Log in</Text>

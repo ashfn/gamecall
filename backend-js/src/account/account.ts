@@ -1,9 +1,12 @@
-import { User } from "@prisma/client";
-import { prisma } from "."
+import { Role, User } from "@prisma/client";
+import { prisma } from ".."
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import crypto from "crypto"
-import { getBase64Profile } from "./profile/generate";
+import { getBase64Profile } from "../profile/generate";
+import { ENGLISH } from "../language";
+import { clientError, success, userError } from "../status";
+import { validEmail, validPassword, validUsername } from "./validation";
 
 function createJwt(user: User){
     const secret = process.env.JWT_SECRET
@@ -36,26 +39,17 @@ export async function refreshToken(refreshToken: string){
     console.log(refreshToken)
 
     if(refreshToken==undefined || refreshToken==null){
-        return {
-            "status":0,
-            "message":"Invalid refresh token"
-        }
+        return clientError("Invalid refresh token")
     }
 
     if(!refreshToken.includes("G")){
-        return {
-            "status":0,
-            "message":"Invalid refresh token"
-        }
+        return clientError("Invalid refresh token")
     }
 
     const parts = refreshToken.split("G")
 
     if(parts.length!=2 || parts[0] == null || parts[1]==""){
-        return {
-            "status":0,
-            "message":"Invalid refresh token"
-        }
+        return clientError("Invalid refresh token")
     }
 
     const token = refreshToken.split("G")[0]
@@ -68,62 +62,41 @@ export async function refreshToken(refreshToken: string){
     })
 
     if(user==null){
-        return {
-            "status":0,
-            "message":"Invalid refresh token"
-        }
+        return clientError("Invalid refresh token")
     }
 
     const match = await bcrypt.compare(token, user.refreshToken)
 
     if(!match){
-        return {
-            "status":0,
-            "message":"Invalid refresh token"
-        }
+        return clientError("Invalid refresh token")
     }
 
     const accessToken = createJwt(user)
 
-    return {
-        "status":1,
-        "data":accessToken
-    }
+    return success(accessToken)
 
 }
 
 export async function register(username: string, email: string, password: string){
 
     if(username==null || email==null || password==null){
-        return {
-            "status":0,
-            "message":"missing parameter(s)"
-        }
+        return clientError("Missing parameters")
     }
 
-    const isValidUsername = /^[a-zA-Z0-9.]{1,10}$/.test(username);
-    const isValidEmail = /^[\w.-]+@[a-zA-Z\d.-]+\.[a-zA-Z]{2,}$/.test(email);
-    const isValidPassword = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(password);
+    const isValidUsername = validUsername(username);
+    const isValidEmail = validEmail(email)
+    const isValidPassword = validPassword(password)
 
     if(!isValidUsername){
-        return {
-            "status":0,
-            "message":"Your username must be between 1 and 10 letters, numbers or full stops"
-        }
+        return userError(ENGLISH.USERNAME_REQUREMENTS)
     }
 
     if(!isValidEmail){
-        return {
-            "status":0,
-            "message":"The entered email is invalid"
-        }
+        return userError(ENGLISH.INVALID_EMAIL)
     }
 
     if(!isValidPassword){
-        return {
-            "status":0,
-            "message":"Your password must contain 8 characters and at least one uppercase, one lowercase and one number"
-        }
+        return userError(ENGLISH.PASSWORD_REQUIREMENTS)
     }
 
     const checkIdentical = await prisma.user.findFirst({
@@ -145,16 +118,10 @@ export async function register(username: string, email: string, password: string
 
     if(checkIdentical!=null){
         if(checkIdentical.email.toUpperCase()==email.toUpperCase()){
-            return {
-                "status":0,
-                "message":"That email has already been used"
-            }
+            return userError(ENGLISH.EMAIL_TAKEN)
         }
         if(checkIdentical.username.toUpperCase()==username.toUpperCase()){
-            return {
-                "status":0,
-                "message":"That username has already been used"
-            }
+            return userError(ENGLISH.USERNAME_TAKEN)
         }
 
     }
@@ -165,7 +132,7 @@ export async function register(username: string, email: string, password: string
             email: email,
             password: hashedPassword,
             displayName: username,
-            role: "USER",
+            role: Role.USER,
             profileImage: {
                 create: {
                    avatar: Buffer.from(await getBase64Profile(username), 'base64')
@@ -174,17 +141,12 @@ export async function register(username: string, email: string, password: string
         }
     })
 
-    return {
-        "status":1
-    }
+    return success()
 }
 
 export async function login(usernameOrEmail: string, password: string){
     if(usernameOrEmail==null || password==null){
-        return {
-            "status":0,
-            "message":"missing parameter(s)"
-        }
+        return clientError("Missing parameters")
     }
 
     const account = await prisma.user.findFirst({
@@ -204,35 +166,22 @@ export async function login(usernameOrEmail: string, password: string){
 
     if(account==null){
         if(usernameOrEmail.includes("@")){
-            return {
-                "status":0,
-                "message":"No account found with that email address"
-            }
+            return userError(ENGLISH.NO_ACCOUNT_WITH_EMAIL)
         }else{
-            return {
-                "status":0,
-                "message":"No account found with that username"
-            }  
+            return userError(ENGLISH.NO_ACCOUNT_WITH_USERNAME)
         }
     }
 
     const match = await bcrypt.compare(password, account.password)
 
     if(!match){
-        return {
-            "status":0,
-            "message":"Invalid password"
-        }
+        return userError(ENGLISH.INCORRECT_PASSWORD)
     }
 
 
     const refreshToken = await updateRefresh(account)
 
-    return {
-        "status":1,
-        "data":refreshToken
-    }
-
+    return success(refreshToken)
 }
 
 export async function logout(userId: number){
@@ -245,8 +194,5 @@ export async function logout(userId: number){
         }
     })
 
-    return {
-        "status":1
-    }
-
+    return success()
 }

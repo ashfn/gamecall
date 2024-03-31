@@ -18,10 +18,20 @@ export default function Page() {
 
     if(!account){
         getAccountDetails()
-        .then((response) => response.json())
+        .then((response) => {
+            if(response!=null){
+                return response.json()
+            }
+
+        })
         .then((accountJson) => {
-            console.log(accountJson)
-            setAccount(accountJson)
+            if(accountJson==null){
+                console.log("accountJson is null.... uh oh")
+            }else{
+                console.log(accountJson)
+                setAccount(accountJson)
+            }
+
         })
         
     }
@@ -48,7 +58,7 @@ export default function Page() {
                             <View className="flex flex-row">
                                 <View className="basis-1/3 self-center pl-4"><Feather name="user-plus" size={25} color="#96e396" /></View>
                                 <Text className="basis-1/3 text-minty-4 text-xl font-bold text-center">GAMECALL</Text>
-                                <Pressable className="basis-1/3 pr-2" onPressIn={() => router.push("settings")}><Image className="self-end rounded-full bg-minty-3" height={30} width={30} source={`${prefix}/avatar/${account.id}`}  /></Pressable>
+                                <Pressable className="basis-1/3 pr-2" onPressIn={() => router.push("settings")}><Image className="self-end rounded-full bg-minty-3" height={30} width={30} source={`${prefix}/avatar/${account.id}`} cachePolicy={"disk"} /></Pressable>
                             </View>
                             <Text className="text-2xl text-minty-4 text-center">You're logged in :) </Text>
                             <Pressable onPressIn={() => {
@@ -61,7 +71,6 @@ export default function Page() {
                                     </View>
                                 </View>
                             </Pressable>
-                            <Image source="http://localhost:3000/avatar/16.png" height={100} width={100} />
                         </>
                     }
 

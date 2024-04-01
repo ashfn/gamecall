@@ -1,13 +1,35 @@
 import * as SecureStore from 'expo-secure-store'
 
 import { prefix } from "./config"
+import { compressObject, decompressObject } from './compress'
 
-export async function getAccountDetails(){
+import { router } from 'expo-router'
+
+async function getFreshAccountDetails(){
     try{
-        const details = await authFetch(`${prefix}/account`, {})
-        return details
+        const details = await authFetch(`${prefix}/account`, {}, router)
+        const response =  await details.json()
+        return response
     }catch (err) {
         return null
+    }
+}
+
+export async function getAccountDetails(forceNew=false){
+    const account = await SecureStore.getItemAsync("account-details")
+    console.log(account)
+    if(account==null || forceNew){
+        const details = await getFreshAccountDetails(router)
+
+        if(details==null){
+            return null
+        }
+
+        await SecureStore.setItemAsync("account-details", JSON.stringify(details))
+    }else {
+        const decompressed = JSON.parse(account)
+        console.log(decompressed)
+        return decompressed
     }
 }
 
@@ -69,11 +91,13 @@ export async function signup(username, email, password){
     }
 }
 
-export async function logout(){
+export async function logout(clearRefreshToken=true){
     await SecureStore.deleteItemAsync("accessToken")
     await SecureStore.deleteItemAsync("refreshToken")
 
-    await fetch(`${prefix}/logout`)
+    if(clearRefreshToken){
+        await fetch(`${prefix}/logout`)
+    }
 }
 
 export async function refreshAccessToken(){
@@ -116,6 +140,10 @@ export async function authFetch(url, options){
     if(response.status==499){
         if(options["authfetchalreadydone"]){
             console.log("Already tried once...")
+            logout(false)
+            if(router!=null){
+                router.replace("/")
+            }
             throw new Error("Refresh token invalid, could not refresh access token")
         }
         console.log("Token expired :( Trying to refresh")

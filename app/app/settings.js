@@ -1,9 +1,10 @@
-import { TextInput, View } from 'react-native';
+import { Modal, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { Link, router, Stack, useFocusEffect, useRouter } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { authFetch, getAccountDetails, logout } from '../util/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { FontAwesome6 } from '@expo/vector-icons';
 
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
@@ -12,23 +13,32 @@ import {Buffer} from "buffer"
 import { prefix } from '../util/config';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-
+import tailwindConfig from '../tailwind.config';
+import { BlurView } from 'expo-blur';
 
 export default function Page() {
 
     const [account, setAccount] = useState(null)
 
-    const [reloadKey, setReloadKey] = useState(0);
+    const [modalVisible, setModalVisible] = useState(false);
 
+    const [blur, setBlur] = useState(0)
 
-    const reloadPage = () => {
-      // Increment the key to trigger a re-render
-      setReloadKey(reloadKey + 1);
-    };
+    function openModal(){
+        setModalVisible(true)
+        setBlur(10)
+        setTimeout(() => setBlur(30), 30)
+    }
+
+    function closeModal(){
+        setModalVisible(false)
+        setBlur(10)
+        setTimeout(() => setBlur(0), 30)
+
+    }
 
     if(!account){
         getAccountDetails()
-        .then((response) => response.json())
         .then((accountJson) => {
             console.log(accountJson)
             setAccount(accountJson)
@@ -67,27 +77,46 @@ export default function Page() {
 
     return(
         <View className="bg-bg h-full">
-
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={modalVisible}
+                >
+                <View className="h-full w-full" onTouchEnd={closeModal}>
+                    <View className="flex items-center mt-40">
+                        <View className="bg-bg rounded-lg w-[70%]">
+                            <Text className="text-xl text-minty-4">Change username</Text>
+                            <Pressable onPress={() => closeModal()}>
+                                <Text>Hide Modal</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
             <SafeAreaView>
-                <View className="p-2">
+                <View className="">
                     {account && 
+
                         <>
-                            <View className="flex flex-row mb-4">
-                                <Pressable className="basis-1/3 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
-                                <Text className="basis-1/3 text-minty-4 text-l text-center font-bold">Profile</Text>
-                            </View>
-                            <View className="flex justify-center items-center">
-                                <Pressable onPressIn={()=> pickImage()}>
-                                    <View className="">
-                                        <Image className="rounded-full bg-minty-3" height={125} width={125} source={`${prefix}/avatar/${account.id}`} cachePolicy={"disk"}  />
-                                        <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
-                                    </View>
-                                </Pressable>
-                                <View className="ml-4 mt-6 mr-4 w-full rounded-md">
-                                    <Pressable>
-                                        <Text className="text-[#ffffff] text-xs">Display name</Text>
-                                        <TextInput className="text-2xl text-[#ffffff] border-[1px] border-[#ffffff] border-solid pl-2" value={account.displayName} />
+
+                            <View className="p-2 h-full">
+                                <View className="flex flex-row mb-4">
+                                    <Pressable className="basis-1/3 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
+                                    <Text className="basis-1/3 text-minty-4 text-l text-center font-bold">Profile</Text>
+                                </View>
+                                <View className="flex justify-center items-center">
+                                    <Pressable onPressIn={()=> pickImage()}>
+                                        <View className="">
+                                            <Image className="rounded-full bg-minty-3" height={125} width={125} source={`${prefix}/avatar/${account.id}`} cachePolicy={"disk"}  />
+                                            <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
+                                        </View>
                                     </Pressable>
+                                        <Pressable onPressIn={() => openModal()}>
+                                            <View className="flex flex-row mt-2 p-2 rounded-lg bg-bg2 items-center">
+                                                <Text className="text-pastel-2 text-2xl mr-2">{account.displayName}</Text>
+                                                <FontAwesome6 name="edit" size={24} color={tailwindConfig.theme.extend.colors.pastel["2"]} />
+                                            </View>
+                                        </Pressable>
                                 </View>
                             </View>
                             
@@ -97,6 +126,14 @@ export default function Page() {
                     
                 </View>
             </SafeAreaView>
+            {blur!=0 &&
+                <BlurView
+                    className="absolute top-0 bottom-0 left-0 right-0"
+                    intensity={blur}
+                    
+                />
+            }
+
         </View>
     )
 }

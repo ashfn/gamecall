@@ -29,6 +29,7 @@ app.post('/account', (req: Request, res: Response) => {
 })
 
 app.post('/login', (req: Request, res: Response) => {
+    console.log("sup")
     login(req.body.account, req.body.password).then((user) => {
         res.send(JSON.stringify(user))
     })

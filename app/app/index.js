@@ -18,12 +18,6 @@ export default function Page() {
 
     if(!account){
         getAccountDetails()
-        .then((response) => {
-            if(response!=null){
-                return response.json()
-            }
-
-        })
         .then((accountJson) => {
             if(accountJson==null){
                 console.log("accountJson is null.... uh oh")

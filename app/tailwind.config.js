@@ -16,7 +16,8 @@ module.exports = {
           3: "#abc5ff",
           4: "#b0abff",
         },
-        "bg":"#0a0a0a"
+        "bg":"#0a0a0a",
+        "bg2": "#1c1b1b"
       },
     }
   },

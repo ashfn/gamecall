@@ -1,8 +1,6 @@
 import * as SecureStore from 'expo-secure-store'
 
 import { prefix } from "./config"
-import { compressObject, decompressObject } from './compress'
-
 import { router } from 'expo-router'
 
 async function getFreshAccountDetails(){
@@ -94,6 +92,7 @@ export async function signup(username, email, password){
 export async function logout(clearRefreshToken=true){
     await SecureStore.deleteItemAsync("accessToken")
     await SecureStore.deleteItemAsync("refreshToken")
+    await SecureStore.deleteItemAsync("account-details")
 
     if(clearRefreshToken){
         await fetch(`${prefix}/logout`)

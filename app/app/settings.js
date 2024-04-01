@@ -1,7 +1,7 @@
 import { Modal, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { Link, router, Stack, useFocusEffect, useRouter } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { authFetch, getAccountDetails, logout } from '../util/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { FontAwesome6 } from '@expo/vector-icons';
@@ -24,17 +24,21 @@ export default function Page() {
 
     const [blur, setBlur] = useState(0)
 
+    const usernameRef = useRef(null)
+
     function openModal(){
         setModalVisible(true)
-        setBlur(10)
-        setTimeout(() => setBlur(30), 30)
+        setBlur(5)
+        setTimeout(() => setBlur(10), 30)
+        setTimeout(() => setBlur(15), 60)
+        setTimeout(() => usernameRef.current.focus(), 85)
     }
 
     function closeModal(){
         setModalVisible(false)
         setBlur(10)
-        setTimeout(() => setBlur(0), 30)
-
+        setTimeout(() => setBlur(5), 30)
+        setTimeout(() => setBlur(0), 60)
     }
 
     if(!account){
@@ -77,22 +81,30 @@ export default function Page() {
 
     return(
         <View className="bg-bg h-full">
-            <Modal
-                animationType="slide"
-                transparent={true}
-                visible={modalVisible}
-                >
-                <View className="h-full w-full" onTouchEnd={closeModal}>
-                    <View className="flex items-center mt-40">
-                        <View className="bg-bg rounded-lg w-[70%]">
-                            <Text className="text-xl text-minty-4">Change username</Text>
-                            <Pressable onPress={() => closeModal()}>
-                                <Text>Hide Modal</Text>
-                            </Pressable>
+            {account && 
+                <Modal
+                    animationType="slide"
+                    transparent={true}
+                    visible={modalVisible}
+                    >
+                    <TouchableWithoutFeedback onPress={closeModal}>
+                        <View className="h-full w-full">
+                            <TouchableWithoutFeedback>
+                                <View className="flex items-center mt-40">
+                                    <View className="bg-bg2 rounded-[8px] w-[70%] flex items-center p-2">
+                                        <Text className="text-xl text-[#ffffff] text-center">Edit name</Text>
+                                        <Text className="text-xs text-[#ffffff] text-center mb-2">This is how you appear to other users</Text>
+                                        <TextInput ref={usernameRef} defaultValue={account.displayName} className="pl-1 pb-1 pr-1 rounded-lg text-2xl text-[#ffffff] bg-bg3 w-full" keyboardAppearance="dark" selectionColor="#ffffff" onSubmitEditing={()=> submit()} enterKeyHint="done" maxLength={15} />
+                                        <Pressable className="rounded-full bg-[#ffffff] px-12 py-2 mt-4">
+                                            <Text className="text-xl">Save</Text>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            </TouchableWithoutFeedback>
                         </View>
-                    </View>
-                </View>
-            </Modal>
+                    </TouchableWithoutFeedback>
+                </Modal>
+            }
             <SafeAreaView>
                 <View className="">
                     {account && 

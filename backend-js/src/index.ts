@@ -4,7 +4,7 @@ import { PrismaClient, Role, User } from '@prisma/client'
 import { register, login, refreshToken, logout } from './account/account';
 import dotenv from "dotenv"
 import { authenticateToken, userDetails } from './middleware';
-import { getAvatarRoute, setAvatarRoute } from './profile/profileRoute';
+import { getAvatarRoute, setAvatarRoute, setDisplayNameRoute, setUsernameRoute } from './profile/profileRoute';
 
 dotenv.config()
 
@@ -54,11 +54,14 @@ app.get('/account', [authenticateToken, userDetails], (req: Request, res: Respon
     res.send(JSON.stringify(res.locals.user))
 })
 
-app.post('/avatar/:userId/', [authenticateToken, userDetails], setAvatarRoute)
+app.post('/profile/:userId/avatar', [authenticateToken, userDetails], setAvatarRoute)
 
 // app.get('/profile/:userId/', [authenticateToken], getProfileRoute)
-app.get('/avatar/:userId/', [], getAvatarRoute)
+app.get('/profile/:userId/avatar', [], getAvatarRoute)
 
+app.post('/profile/:userId/displayname', [authenticateToken, userDetails], setDisplayNameRoute)
+
+app.post('/profile/:userId/username', [authenticateToken, userDetails], setUsernameRoute)
 
 app.get('/logout', authenticateToken, (req: Request, res: Response) => {
     const user: User = res.locals.user

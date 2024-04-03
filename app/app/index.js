@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { Link, router, Stack } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { getAccountDetails, logout } from '../util/auth';
 import { Feather } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -9,12 +9,16 @@ import { Image } from 'expo-image';
 
 import {Buffer} from "buffer"
 import { prefix } from '../util/config';
+import Counter, { InputModal } from '../src/components/InputModal';
+import { ErrorModal, InfoModal } from '../src/components/TextModal';
 
 
 
 export default function Page() {
 
     const [account, setAccount] = useState(null)
+
+    const testRef = useRef(null)
 
     if(!account){
         getAccountDetails()
@@ -52,19 +56,25 @@ export default function Page() {
                             <View className="flex flex-row">
                                 <View className="basis-1/3 self-center pl-4"><Feather name="user-plus" size={25} color="#96e396" /></View>
                                 <Text className="basis-1/3 text-minty-4 text-xl font-bold text-center">GAMECALL</Text>
-                                <Pressable className="basis-1/3 pr-2" onPressIn={() => router.push("settings")}><Image className="self-end rounded-full bg-minty-3" height={30} width={30} source={`${prefix}/avatar/${account.id}`} cachePolicy={"disk"} /></Pressable>
+                                <Pressable className="basis-1/3 pr-2" onPressIn={() => router.push("settings")}><Image className="self-end rounded-full bg-minty-3" height={30} width={30} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"} /></Pressable>
                             </View>
                             <Text className="text-2xl text-minty-4 text-center">You're logged in :) </Text>
                             <Pressable onPressIn={() => {
-                                logout()
-                                router.replace("/")
+                                logout().then(() => router.replace("/"))
+                                
+                                // testRef.current.openModal("Test", "haha testing this", "cool")
+                                // console.log(testRef)
+                                // testRef.current.openModal()
                             }} >
                                 <View className={"bg-minty-4 border-solid border-minty-4 border-[1px] rounded-lg ml-8 mr-8 h-14 "}>
                                     <View className="m-auto flex flex-row">
                                         <Text className="text-bg text-center text-xl ">Log out</Text>
+                                        {/* <Counter ref={testRef} /> */}
                                     </View>
                                 </View>
+                                
                             </Pressable>
+                            <ErrorModal ref={testRef} />
                         </>
                     }
 

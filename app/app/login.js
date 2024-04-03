@@ -6,7 +6,7 @@ import { validateCredentials } from '../util/accountValidation';
 import { AntDesign } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
-import { login, signup, authFetch } from "../util/auth"
+import { login, signup, authFetch, getAccountDetails } from "../util/auth"
 
 export default function Page() {
 
@@ -24,7 +24,7 @@ export default function Page() {
         setWaiting(true)
         login(account, password).then((response) => {
             if(response==""){
-                router.navigate(".")
+                getAccountDetails(true).then(() => router.navigate("."))
             }else{
                 setErrorMessages([response])
                 setWaiting(false)

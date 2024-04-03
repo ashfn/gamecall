@@ -11,5 +11,5 @@ export function validEmail(username: string): boolean {
 }
 
 export function validDisplayName(displayname: string): boolean {
-    return /^[\p{L}\p{N}\p{P}\p{Z}\p{S}]{3,15}$/.test(displayname)
+    return /^.{3,15}$/.test(displayname)
 }

@@ -111,6 +111,10 @@ export function setDisplayNameRoute(req: Request, res: Response){
         return res.send(JSON.stringify(clientError("You do not have access to that resource")))
     }
 
+    if(req.body.displayname=="unallowed"){
+        return res.send(JSON.stringify(userError("unallowed")))
+    }
+
     if(!validDisplayName(req.body.displayname)){
         return res.send(JSON.stringify(userError(ENGLISH.DISPLAYNAME_REQUIREMENTS)))
     }

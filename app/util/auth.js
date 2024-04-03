@@ -15,7 +15,6 @@ async function getFreshAccountDetails(){
 
 export async function getAccountDetails(forceNew=false){
     const account = await SecureStore.getItemAsync("account-details")
-    console.log(account)
     if(account==null || forceNew){
         const details = await getFreshAccountDetails(router)
 
@@ -26,7 +25,6 @@ export async function getAccountDetails(forceNew=false){
         await SecureStore.setItemAsync("account-details", JSON.stringify(details))
     }else {
         const decompressed = JSON.parse(account)
-        console.log(decompressed)
         return decompressed
     }
 }

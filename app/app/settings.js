@@ -15,6 +15,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import tailwindConfig from '../tailwind.config';
 import { BlurView } from 'expo-blur';
+import { InputModal } from '../src/components/InputModal';
+import { InfoModal } from '../src/components/TextModal';
 
 export default function Page() {
 
@@ -23,31 +25,43 @@ export default function Page() {
     const [modalVisible, setModalVisible] = useState(false);
 
     const [blur, setBlur] = useState(0)
-
-    const usernameRef = useRef(null)
-
-    function openModal(){
-        setModalVisible(true)
-        setBlur(5)
-        setTimeout(() => setBlur(10), 30)
-        setTimeout(() => setBlur(15), 60)
-        setTimeout(() => usernameRef.current.focus(), 85)
-    }
-
-    function closeModal(){
-        setModalVisible(false)
-        setBlur(10)
-        setTimeout(() => setBlur(5), 30)
-        setTimeout(() => setBlur(0), 60)
-    }
+    const displaynameModalRef = useRef(null)
+    const infoModal = useRef(null)
 
     if(!account){
-        getAccountDetails()
+        reloadAccount()
+    }
+
+    function reloadAccount(forceNew=false){
+        getAccountDetails(forceNew)
         .then((accountJson) => {
-            console.log(accountJson)
             setAccount(accountJson)
         })
-        
+    }
+
+    async function updateDisplayname(displayname){
+        displaynameModalRef.current.closeModal()
+        const setDisplaynameResult = await authFetch(`${prefix}/profile/${account.id}s/displayname`, {
+            headers: {
+                "Content-Type": "application/json",
+              },
+            method: "POST",
+            body: JSON.stringify({"displayname": displayname} )
+        })
+
+        const setDisplaynameResultJson = await setDisplaynameResult.json()
+
+        if(setDisplaynameResultJson.status==1){
+            reloadAccount(true)
+        }else{
+            if(setDisplaynameResultJson.status==-1){
+                infoModal.current.openModal("Error", setDisplaynameResultJson.error, "OK")
+            }else{
+                console.error(setDisplaynameResultJson.error)
+            }
+
+        }
+
     }
 
     async function pickImage(){
@@ -62,7 +76,7 @@ export default function Page() {
         })
         if(!result.canceled){
             const base64 = result.assets[0].base64
-            authFetch(`${prefix}/avatar/${account.id}`, {
+            authFetch(`${prefix}/profile/${account.id}/avatar`, {
                 headers: {
                     "Content-Type": "application/json",
                   },
@@ -73,7 +87,7 @@ export default function Page() {
             }).then((json) => {
                 console.log(json)
                 Promise.all([Image.clearDiskCache(), Image.clearMemoryCache()]).then(() => {
-                    setAccount(null)
+                    reloadAccount(true)
                 })
             })
         }
@@ -82,28 +96,10 @@ export default function Page() {
     return(
         <View className="bg-bg h-full">
             {account && 
-                <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={modalVisible}
-                    >
-                    <TouchableWithoutFeedback onPress={closeModal}>
-                        <View className="h-full w-full">
-                            <TouchableWithoutFeedback>
-                                <View className="flex items-center mt-40">
-                                    <View className="bg-bg2 rounded-[8px] w-[70%] flex items-center p-2">
-                                        <Text className="text-xl text-[#ffffff] text-center">Edit name</Text>
-                                        <Text className="text-xs text-[#ffffff] text-center mb-2">This is how you appear to other users</Text>
-                                        <TextInput ref={usernameRef} defaultValue={account.displayName} className="pl-1 pb-1 pr-1 rounded-lg text-2xl text-[#ffffff] bg-bg3 w-full" keyboardAppearance="dark" selectionColor="#ffffff" onSubmitEditing={()=> submit()} enterKeyHint="done" maxLength={15} />
-                                        <Pressable className="rounded-full bg-[#ffffff] px-12 py-2 mt-4">
-                                            <Text className="text-xl">Save</Text>
-                                        </Pressable>
-                                    </View>
-                                </View>
-                            </TouchableWithoutFeedback>
-                        </View>
-                    </TouchableWithoutFeedback>
-                </Modal>
+                <>
+                    <InputModal ref={displaynameModalRef} title={"Edit name"} description={"This is how you appear to other users"} defaultvalue={account.displayName} onsubmit={updateDisplayname} setBlur={setBlur} />
+                    <InfoModal ref={infoModal} />
+                </>
             }
             <SafeAreaView>
                 <View className="">
@@ -119,14 +115,14 @@ export default function Page() {
                                 <View className="flex justify-center items-center">
                                     <Pressable onPressIn={()=> pickImage()}>
                                         <View className="">
-                                            <Image className="rounded-full bg-minty-3" height={125} width={125} source={`${prefix}/avatar/${account.id}`} cachePolicy={"disk"}  />
+                                            <Image className="rounded-full bg-minty-3" height={125} width={125} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"}  />
                                             <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
                                         </View>
                                     </Pressable>
-                                        <Pressable onPressIn={() => openModal()}>
+                                        <Pressable onPressIn={() => displaynameModalRef.current.openModal()}>
                                             <View className="flex flex-row mt-2 p-2 rounded-lg bg-bg2 items-center">
-                                                <Text className="text-pastel-2 text-2xl mr-2">{account.displayName}</Text>
-                                                <FontAwesome6 name="edit" size={24} color={tailwindConfig.theme.extend.colors.pastel["2"]} />
+                                                <Text className="text-[#ffffff] pastel-2 text-2xl mr-2">{account.displayName}</Text>
+                                                <FontAwesome6 name="edit" size={24} color={"#ffffff"} />
                                             </View>
                                         </Pressable>
                                 </View>

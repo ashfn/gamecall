@@ -3,8 +3,9 @@ import express, { Request, Response } from 'express';
 import { PrismaClient, Role, User } from '@prisma/client'
 import { register, login, refreshToken, logout } from './account/account';
 import dotenv from "dotenv"
-import { authenticateToken, userDetails } from './middleware';
+import { authenticateToken, userDetails, userFullContext } from './middleware';
 import { getAvatarRoute, setAvatarRoute, setDisplayNameRoute, setUsernameRoute } from './profile/profileRoute';
+import { addFriendRequestRoute, denyFriendRequestRoute, getConnectionsRoute, getFriendRequestsRoute } from './friends/friendRoutes';
 
 dotenv.config()
 
@@ -24,13 +25,14 @@ app.get('/', (req: Request, res: Response) => {
 
 app.post('/account', (req: Request, res: Response) => {
     register(req.body.username, req.body.email, req.body.password).then((user) => {
+        console.log(user)
         res.send(JSON.stringify(user))
     })
 })
 
 app.post('/login', (req: Request, res: Response) => {
-    console.log("sup")
     login(req.body.account, req.body.password).then((user) => {
+        console.log(user)
         res.send(JSON.stringify(user))
     })
 })
@@ -51,6 +53,7 @@ app.get('/debug', [authenticateToken, userDetails], (req: Request, res: Response
 })
 
 app.get('/account', [authenticateToken, userDetails], (req: Request, res: Response) => {
+    console.log(res.locals.user)
     res.send(JSON.stringify(res.locals.user))
 })
 
@@ -62,6 +65,15 @@ app.get('/profile/:userId/avatar', [], getAvatarRoute)
 app.post('/profile/:userId/displayname', [authenticateToken, userDetails], setDisplayNameRoute)
 
 app.post('/profile/:userId/username', [authenticateToken, userDetails], setUsernameRoute)
+
+app.post('/friendRequest/:userId', [authenticateToken, userFullContext], addFriendRequestRoute)
+
+app.get('/friendRequests', [authenticateToken, userDetails], getFriendRequestsRoute)
+
+app.get('/connections', [authenticateToken, userDetails], getConnectionsRoute)
+
+app.post('/denyFriendRequest/:userId', [authenticateToken, userDetails], denyFriendRequestRoute)
+
 
 app.get('/logout', authenticateToken, (req: Request, res: Response) => {
     const user: User = res.locals.user

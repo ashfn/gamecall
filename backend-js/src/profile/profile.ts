@@ -16,6 +16,10 @@ export async function getAvatar(userId: number){
     return success(avatar)
 }
 
+export async function getProfile(userId: number){
+    
+}
+
 /**
  * avatar should be in bytes
  */

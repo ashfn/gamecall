@@ -7,6 +7,7 @@ import { AntDesign } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { login, signup } from "../util/auth"
+import { InfoModal } from '../src/components/TextModal';
 
 export default function Page() {
 
@@ -22,25 +23,39 @@ export default function Page() {
     const [email, setEmail] = useState(null)
     const [password, setPassword] = useState(null)
 
+    const infoModalRef = useRef()
+
     function submit(){
+        usernameRef.current.blur()
+        emailRef.current.blur()
+        passwordRef.current.blur()
         setWaiting(true)
         const errors = validateCredentials(email, password, username)
 
         if(errors.length==0){
             signup(username, email, password).then((response) => {
-                if(response==""){
-                    // successful signup, let's log in
-                    setWaiting(false)
-                }else{
-                    setErrorMessages([response])
-                    setWaiting(false)
+                setWaiting(false)
+                switch (response.status) {
+                    case -1: {
+                        setErrorMessages([response.error])
+                        break
+                    }
+                    case 0: {
+                        console.error(response.error)
+                        break
+                    }
+                    case 1: {
+                        // infoModalRef.current.setOnModalClose(() => router.navigate("."))
+                        // infoModalRef.current.openModal("Signed up!", "Your account has been created, you can log in now", "Login")
+                        router.navigate(".")
+                    }
                 }
             })
         }else{
             setTimeout(() => {
                 setErrorMessages(errors)
                 setWaiting(false)
-            }, 250)
+            }, 100)
             
         }
     }
@@ -48,6 +63,7 @@ export default function Page() {
     return(
         <View className="bg-bg h-full">
             <SafeAreaView>
+                <InfoModal ref={infoModalRef} />
                 <View>
                     
                     <View className="mb-32">

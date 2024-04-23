@@ -21,13 +21,29 @@ export default function Page() {
     const [password, setPassword] = useState(null)
 
     function submit(){
+        accountRef.current.blur()
+        passwordRef.current.blur()
         setWaiting(true)
+        setErrorMessages([])
+        if(account==null || password==null){
+            setErrorMessages(["Missing fields"])
+            // setTimeout(() => setWaiting(false), 200)
+            return
+        }
         login(account, password).then((response) => {
-            if(response==""){
-                getAccountDetails(true).then(() => router.navigate("."))
-            }else{
-                setErrorMessages([response])
-                setWaiting(false)
+            setWaiting(false)
+            switch (response.status) {
+                case -1: {
+                    setErrorMessages([response.error])
+                    break
+                }
+                case 0: {
+                    console.error(response.error)
+                    break
+                }
+                case 1: {
+                    getAccountDetails(true).then(() => router.navigate("."))
+                }
             }
         })
     }

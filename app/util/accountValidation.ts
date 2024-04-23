@@ -1,4 +1,4 @@
-export function validateCredentials(email, password, username) {
+export function validateCredentials(email: string, password: string, username: string) {
     const errors = [];
   
     // Validate email

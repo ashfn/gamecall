@@ -1,15 +1,17 @@
 import { View } from 'react-native';
 import { Link, router, Stack } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAccountDetails, logout } from '../util/auth';
 import { Feather } from '@expo/vector-icons';
+import { FontAwesome5 } from '@expo/vector-icons';
+
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 
 import {Buffer} from "buffer"
 import { prefix } from '../util/config';
-import Counter, { InputModal } from '../src/components/InputModal';
+import { InputModal } from '../src/components/InputModal';
 import { ErrorModal, InfoModal } from '../src/components/TextModal';
 
 
@@ -17,19 +19,38 @@ import { ErrorModal, InfoModal } from '../src/components/TextModal';
 export default function Page() {
 
     const [account, setAccount] = useState(null)
+    const [launchDone, setLaunchDone] = useState(false)
 
     const testRef = useRef(null)
 
-    if(!account){
+    const onLaunchRef = useRef(false);
+
+    useEffect(() => {
+      if (onLaunchRef.current) {
+        return;
+      }
+      getAccountDetails(true)
+      .then((accountJson) => {
+          if(accountJson==0){
+              setAccount(0)
+          }else{
+              setAccount(accountJson)
+          }
+          setLaunchDone(true)
+      })
+      onLaunchRef.current = true;
+    }, []);
+
+    if(!account && launchDone){
+        console.log("|| Refreshing Account Details")
         getAccountDetails()
         .then((accountJson) => {
-            if(accountJson==null){
-                console.log("accountJson is null.... uh oh")
+            if(accountJson==0){
+                console.log("accountJson is null...")
+                setAccount(0)
             }else{
-                console.log(accountJson)
                 setAccount(accountJson)
             }
-
         })
         
     }
@@ -42,7 +63,7 @@ export default function Page() {
         <View className="bg-bg h-full">
             <SafeAreaView>
                 <View className="p-2">
-                    {!account && 
+                    {account==null || account==0 && 
                         <>
                             <Text className="text-2xl text-minty-4 text-center">Welcome to GameCall</Text>
                             <View className="mt-24 flex flex-row ">
@@ -51,12 +72,21 @@ export default function Page() {
                             </View>
                         </>
                     }
-                    {account && 
+                    {(account!=0 && account!=null) && 
                         <>
                             <View className="flex flex-row">
-                                <View className="basis-1/3 self-center pl-4"><Feather name="user-plus" size={25} color="#96e396" /></View>
+                                <Pressable className="basis-1/3 self-center pl-4"onPressIn={() => router.push("/friends")}>
+                                    <View className="w-[35px]">
+                                        <FontAwesome5 name="user-friends" size={22} color="#96e396">
+                                        </FontAwesome5>
+                                        <Text className="text-xs text-minty-4 font-bold absolute top-[-8px] right-0">3</Text>
+                                        {/* <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0">View> */}
+                                    </View>
+                                </Pressable>
                                 <Text className="basis-1/3 text-minty-4 text-xl font-bold text-center">GAMECALL</Text>
-                                <Pressable className="basis-1/3 pr-2" onPressIn={() => router.push("settings")}><Image className="self-end rounded-full bg-minty-3" height={30} width={30} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"} /></Pressable>
+                                <Pressable className="basis-1/3 pr-2" onPressIn={() => router.push("settings")}>
+                                    <Image className="self-end rounded-full bg-minty-3" height={30} width={30} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"} />
+                                </Pressable>
                             </View>
                             <Text className="text-2xl text-minty-4 text-center">You're logged in :) </Text>
                             <Pressable onPressIn={() => {

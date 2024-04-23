@@ -27,6 +27,8 @@ export default function Page() {
     const [blur, setBlur] = useState(0)
     const displaynameModalRef = useRef(null)
     const infoModal = useRef(null)
+    const [userId, setUserId] = useState(null)
+    
 
     if(!account){
         reloadAccount()
@@ -35,13 +37,16 @@ export default function Page() {
     function reloadAccount(forceNew=false){
         getAccountDetails(forceNew)
         .then((accountJson) => {
+            if(userId!=accountJson.id){
+                setUserId(accountJson.id)
+            }
             setAccount(accountJson)
         })
     }
 
     async function updateDisplayname(displayname){
         displaynameModalRef.current.closeModal()
-        const setDisplaynameResult = await authFetch(`${prefix}/profile/${account.id}s/displayname`, {
+        const setDisplaynameResult = await authFetch(`${prefix}/profile/${account.id}/displayname`, {
             headers: {
                 "Content-Type": "application/json",
               },
@@ -85,9 +90,12 @@ export default function Page() {
             }).then((response) => {
                 return response.json()
             }).then((json) => {
-                console.log(json)
+                // console.log(json)
                 Promise.all([Image.clearDiskCache(), Image.clearMemoryCache()]).then(() => {
-                    reloadAccount(true)
+                    const x = userId
+                    setUserId(-1)
+                    setUserId(x)
+                    
                 })
             })
         }
@@ -115,7 +123,7 @@ export default function Page() {
                                 <View className="flex justify-center items-center">
                                     <Pressable onPressIn={()=> pickImage()}>
                                         <View className="">
-                                            <Image className="rounded-full bg-minty-3" height={125} width={125} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"}  />
+                                            <Image className="rounded-full" height={125} width={125} source={`${prefix}/profile/${userId}/avatar`} cachePolicy={"disk"}  />
                                             <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
                                         </View>
                                     </Pressable>

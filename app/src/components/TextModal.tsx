@@ -15,6 +15,11 @@ export const InfoModal = forwardRef((props, ref) => {
     const [description, setDescription] = useState("default description")
     const [closeMessage, setCloseMessage] = useState("OK")
 
+    const [onClose, setOnClose] = useState(null)
+
+    const setOnModalClose = (onClose) => {
+        setOnClose(onClose)
+    }
 
     const openModal = (title, description, closeMessage="OK") => {
         if(modalVisible){
@@ -30,10 +35,13 @@ export const InfoModal = forwardRef((props, ref) => {
     const closeModal = () => {
         setModalVisible(false)
         if(props.setBlur) setTimeout(() => props.setBlur(0), 60)
+        if(onClose){
+            onClose()
+        }
     }
 
     useImperativeHandle(ref, () => ({
-        openModal
+        openModal, closeModal, setOnModalClose
     }));
 
     return (

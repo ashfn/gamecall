@@ -7,9 +7,14 @@ import { getTimeEpoch } from "../util";
 import { ActionStatus, clientError, getResultString, success, userError } from "../status";
 import { validDisplayName, validUsername } from "../account/validation";
 import { ENGLISH } from "../language";
+import { getAllConnections } from "../friends/friends";
 
 
 export function getAvatarRoute(req: Request, res: Response){
+    const target = parseInt(req.params.userId, 10)
+    if(Number.isNaN(Number(req.params.userId)) || Number.isNaN(target)){
+        return res.send(JSON.stringify(clientError("Invalid userId")))
+    }
     getAvatar(parseInt(req.params.userId)).then((response) => {
         if(response.status==ActionStatus.SUCCESS){
             res.set('Content-Type', 'image/png');
@@ -22,7 +27,11 @@ export function getAvatarRoute(req: Request, res: Response){
 
 export function setAvatarRoute(req: Request, res: Response){
     const user:User = res.locals.user
-    const target = parseInt(req.params.userId)
+    const target = parseInt(req.params.userId, 10)
+
+    if(Number.isNaN(Number(req.params.userId)) || Number.isNaN(target)){
+        return res.send(JSON.stringify(clientError("Invalid userId")))
+    }
 
     // Avatar must be added as JSON Body
     if(!req.body.avatar){
@@ -44,6 +53,10 @@ export function setAvatarRoute(req: Request, res: Response){
 export function setUsernameRoute(req: Request, res: Response){
     const requestUser:User = res.locals.user
     const target = parseInt(req.params.userId)
+
+    if(Number.isNaN(Number(req.params.userId)) || Number.isNaN(target)){
+        return res.send(JSON.stringify(clientError("Invalid userId")))
+    }
 
     // Username must be added as JSON Body
     if(!req.body.username){
@@ -98,6 +111,10 @@ export function setDisplayNameRoute(req: Request, res: Response){
     const requestUser:User = res.locals.user
     const target = parseInt(req.params.userId)
 
+    if(Number.isNaN(Number(req.params.userId)) || Number.isNaN(target)){
+        return res.send(JSON.stringify(clientError("Invalid userId")))
+    }
+
     // Displayname must be added as JSON Body
     if(!req.body.displayname){
         return res.send(JSON.stringify(clientError("Display name not present in request body")))
@@ -123,3 +140,4 @@ export function setDisplayNameRoute(req: Request, res: Response){
         return res.send(JSON.stringify(success()))
     })
 }
+

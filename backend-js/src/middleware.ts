@@ -17,7 +17,6 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
 
     jwt.verify(token, secret, (err: any, user: any) => {
         if (err){
-            console.log(err)
             return res.status(499).send()
         }
 
@@ -29,10 +28,9 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
 
 export function userDetails(req: Request, res: Response, next: NextFunction){
     if(!res.locals.userId){
-        throw new Error("UserDetails middleware used without previous authenticateToken middleware")
+        console.error("UserDetails middleware used without previous authenticateToken middleware")
+        return res.status(499).send()
     }
-
-    console.log(res.locals.userId)
 
     prisma.user.findUnique({
         where: {
@@ -40,7 +38,34 @@ export function userDetails(req: Request, res: Response, next: NextFunction){
         }
     }).then((first) => {
         if(first==null){
-            throw new Error("Supplied userId does not exist in database")
+            console.error("Supplied userId does not exist in database (Normally this happens when a user's account is deleted but their JWT is still valid")
+            return res.status(499).send()
+        }
+
+        res.locals.user = first
+        next()
+    })
+
+}
+
+export function userFullContext(req: Request, res: Response, next: NextFunction){
+    if(!res.locals.userId){
+        console.error("UserDetails middleware used without previous authenticateToken middleware")
+        return res.status(499).send()
+    }
+
+    prisma.user.findUnique({
+        where: {
+            id: res.locals.userId
+        },
+        include: {
+            requestsReceived: true,
+            requestsSent: true
+        }
+    }).then((first) => {
+        if(first==null){
+            console.error("Supplied userId does not exist in database (Normally this happens when a user's account is deleted but their JWT is still valid")
+            return res.status(499).send()
         }
 
         res.locals.user = first

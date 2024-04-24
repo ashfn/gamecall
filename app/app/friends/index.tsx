@@ -1,5 +1,5 @@
 import { Pressable, View, Text, ScrollView } from "react-native";
-import { InputModal } from "../../src/components/InputModal";
+import { ConfirmModal, InputModal } from "../../src/components/InputModal";
 import { InfoModal } from "../../src/components/TextModal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ export default function friendsPage(){
 
     const [account, setAccount] = useState(null)
     const infoModal = useRef(null)
+    const confirmModal = useRef(null)
 
     const [requests, setRequests] = useState(null)
 
@@ -22,8 +23,6 @@ export default function friendsPage(){
         reloadAccount()
         reloadRequests()
     }
-
-
 
     function reloadAccount(forceNew=false){
         getAccountDetails(forceNew)
@@ -49,12 +48,20 @@ export default function friendsPage(){
         })
     }
 
+    function deleteRequest(userId, displayName){
+        confirmModal.current.openModal(`Are you sure you want to delete your friend request from ${displayName}`, () => {
+            console.log("Delete request")
 
+        }, () => {
+            console.log("Keep Request")
+        }, "Delete")
+    } 
 
     return (
         <View className="bg-bg h-full">
             {/* <Stack.Screen options={{animation: "slide_from_bottom"}}/> */}
             <InfoModal ref={infoModal} />
+            <ConfirmModal ref={confirmModal} />
             <SafeAreaView>
                 <View className="">
                     {account && 
@@ -91,7 +98,7 @@ export default function friendsPage(){
                                                                     </Text>
                                                                     
                                                                     <View className="flex flex-row ml-2 mr-4"> 
-                                                                        <Pressable className="basis-[40%] rounded-md bg-bg2 px-4 py-2 mr-2">
+                                                                        <Pressable className="basis-[40%] rounded-md bg-bg2 px-4 py-2 mr-2" onPress={() => deleteRequest(x.requestOriginId, x.requestOrigin.displayName)}>
                                                                             <Text className="text-center text-[#ffffff] text-l">Delete</Text>
                                                                         </Pressable>
                                                                         <Pressable className="basis-[60%] rounded-md bg-minty-4 px-4 py-2">

@@ -64,35 +64,49 @@ export const InputModal = forwardRef((props, ref) => {
 export const ConfirmModal = forwardRef((props, ref) => {
     const [modalVisible, setModalVisible] = useState(false)
     const [description, setDescription] = useState("default description")
-    const [onConfirm, setOnConfirm] = useState(() => {})
-    const [onCancel, setOnCancel] = useState(() => {})
+    const [onConfirm, setOnConfirm] = useState(() => () => {console.log("AA")})
+    const [onCancel, setOnCancel] = useState(() => () => {console.log("BB")})
+    const [confirmMessage, setConfirmMessage] = useState(null)
 
 
-    const openModal = (description, onConfirm=null, onCancel=null) => {
+    const openModal = (description, onConfirmParam=null, onCancelParam=null, confirmMessage="Confirm") => {
         if(modalVisible){
             closeModal()
         }
 
-        setDescription(description)
-        setModalVisible(true)
-        
-        if(onConfirm){
-            setOnConfirm(onConfirm)
+        if(onConfirmParam!=null){
+            setOnConfirm(() => () => {onConfirmParam()})
         }
 
-        if(onCancel){
-            setOnCancel(onCancel)
+        if(onCancelParam!=null){
+            setOnCancel(() => () => {onCancelParam()})
         }
+
+        setConfirmMessage(confirmMessage)
+
+        setDescription(description)
+        setTimeout(() => {setModalVisible(true)}, 50)
+
     }
 
-    const closeModal = () => {
+    const closeModal = (cancel=true) => {
         setModalVisible(false)
+        if(cancel){
+            onCancel()
+        }
+
         if(props.setBlur) setTimeout(() => props.setBlur(0), 60)
+
     }
 
     useImperativeHandle(ref, () => ({
         openModal
     }));
+
+    function confirm(){
+        closeModal(false)
+        onConfirm()
+    }
 
     return (
         <Modal
@@ -107,8 +121,8 @@ export const ConfirmModal = forwardRef((props, ref) => {
                             <View className="bg-bg2 rounded-[8px] w-[70%] flex items-center p-2">
                                 <Text className="text-xl text-[#ffffff] text-center">Confirm</Text>
                                 <Text className="text-s text-[#ffffff] text-center">{description}</Text>
-                                <Pressable className="rounded-full bg-minty-4 px-12 py-2 mt-4" onPress={() => props.onsubmit(value)}>
-                                    <Text className="text-xl">Confirm</Text>
+                                <Pressable className="rounded-full bg-minty-4 px-12 py-2 mt-4" onPress={() => confirm()}>
+                                    <Text className="text-xl">{confirmMessage}</Text>
                                 </Pressable>
                                 <Pressable className="mt-2" onPress={() => closeModal()}>
                                     <Text className="text-xs text-[#9ca3af]">Cancel</Text>

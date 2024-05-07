@@ -141,3 +141,8 @@ export function setDisplayNameRoute(req: Request, res: Response){
     })
 }
 
+export function searchProfiles(req: Request, res: Response){
+
+    
+
+}

@@ -68,3 +68,30 @@ export async function setDisplayName(userId: number, displayName: string){
         }
     })
 }
+
+export async function searchProfiles(search: string){
+
+    const profiles = await prisma.user.findMany({
+        take: 25,
+        where: {
+            OR: [
+                { username: { search: search }},
+                { displayName: { search: search }}
+            ]
+        },
+        select: {
+            username: true,
+            displayName: true,
+            id: true
+        },
+        orderBy: {
+            _relevance: {
+              fields: ['username', 'displayName'],
+              search: 'database',
+              sort: 'asc'
+            },
+        }
+    })
+
+    return profiles
+}

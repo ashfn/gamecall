@@ -1,7 +1,7 @@
 import { View } from 'react-native';
-import { Link, router, Stack } from "expo-router"
+import { Link, router, SplashScreen, Stack } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAccountDetails, logout } from '../util/auth';
 import { Feather } from '@expo/vector-icons';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -13,8 +13,10 @@ import {Buffer} from "buffer"
 import { prefix } from '../util/config';
 import { InputModal } from '../src/components/InputModal';
 import { ErrorModal, InfoModal } from '../src/components/TextModal';
+import { useFonts } from 'expo-font';
 
 
+SplashScreen.preventAutoHideAsync();
 
 export default function Page() {
 
@@ -55,12 +57,28 @@ export default function Page() {
         
     }
 
+    const [fontsLoaded, fontError] = useFonts({
+        'Inter-Black': require('../assets/fonts/Inter-Black.ttf')
+    });
+    
+    console.log(`fonts ${fontsLoaded}`)
+
+    const onLayoutRootView = useCallback(async () => {
+        console.log(`loaded wooo`)
+        if (fontsLoaded || fontError) {
+          await SplashScreen.hideAsync();
+        }
+    }, [fontsLoaded, fontError]);
+
+    if (!fontsLoaded && !fontError) {
+        return null;
+    }
 
     const link = " text-2xl text-minty-4 text-center basis-1/2"
     const border = " border-2 rounded-lg border-[#ffffff] border-solid"
 
     return(
-        <View className="bg-bg h-full">
+        <View className="bg-bg h-full" onLayout={onLayoutRootView}>
             <SafeAreaView>
                 <View className="p-2">
                     {account==null || account==0 && 
@@ -99,6 +117,7 @@ export default function Page() {
                                 <View className={"bg-minty-4 border-solid border-minty-4 border-[1px] rounded-lg ml-8 mr-8 h-14 "}>
                                     <View className="m-auto flex flex-row">
                                         <Text className="text-bg text-center text-xl ">Log out</Text>
+
                                         {/* <Counter ref={testRef} /> */}
                                     </View>
                                 </View>

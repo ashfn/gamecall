@@ -1,14 +1,18 @@
-import { Pressable, View, Text, ScrollView } from "react-native";
+import { Pressable, View, Text, ScrollView, TextInput } from "react-native";
 import { ConfirmModal, InputModal } from "../../src/components/InputModal";
 import { InfoModal } from "../../src/components/TextModal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authFetch, getAccountDetails } from "../../util/auth";
-import { router } from "expo-router"
+import { router, SplashScreen } from "expo-router"
 import { prefix } from "../../util/config";
 import { Image } from 'expo-image';
 import { FontAwesome } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
+import * as Haptics from 'expo-haptics';
+import {MotiView} from 'moti'
+import { Easing } from "react-native-reanimated";
 
 export default function friendsPage(){
 
@@ -16,6 +20,9 @@ export default function friendsPage(){
     const [account, setAccount] = useState(null)
     const infoModal = useRef(null)
     const confirmModal = useRef(null)
+    const [searchOpen, setSearchOpen] = useState(false)
+    const [searchQuery, setSearchQuery] = useState("")
+    const searchBarRef = useRef(null)
 
     const [requests, setRequests] = useState(null)
 
@@ -50,12 +57,39 @@ export default function friendsPage(){
 
     function deleteRequest(userId, displayName){
         confirmModal.current.openModal(`Are you sure you want to delete your friend request from ${displayName}`, () => {
-            console.log("Delete request")
-
+            authFetch(`${prefix}/denyFriendRequest/${userId}`, {
+                headers: {
+                    "Content-Type": "application/json",
+                  },
+                method: "POST"})
+            .then((response) => {
+                return response.json()
+            }).then((json) => {
+                console.log(json)
+            })
         }, () => {
             console.log("Keep Request")
         }, "Delete")
     } 
+
+    function openSearch(){
+        setSearchOpen(true)
+        if(!searchBarRef.current.isFocused()){
+            searchBarRef.current.focus()
+        }
+
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    }
+
+    function closeSearch(){
+        setSearchOpen(false)
+        if(searchBarRef.current.isFocused()){
+            searchBarRef.current.blur()
+        }
+        setSearchQuery("")
+
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    }
 
     return (
         <View className="bg-bg h-full">
@@ -76,12 +110,31 @@ export default function friendsPage(){
                                 <View className="h-full">
                                     {(requests) &&
                                         <View>
-                                            <Pressable className="flex flex-row bg-bg2 rounded-lg">
-                                                <View className="self-center">
-                                                    <FontAwesome name="search" size={24} color="#ffffff" />
-                                                </View>
-                                                <Text className="text-[#ffffff]">Find friends</Text>
-                                            </Pressable>
+                                            <View className="flex flex-row">
+                                                <MotiView className="bg-bg2 rounded-lg py-2 px-4 mr-2" animate={{ flexBasis: searchOpen ? "80%" : "100%" }}        
+                                                    transition={{
+                                                        type: 'timing',
+                                                        duration: 180,
+                                                        easing: Easing.linear,
+                                                    }}
+                                                >
+                                                    <Pressable className=" flex flex-row" onPress={() => {
+                                                        if(!searchOpen){
+                                                            openSearch()
+                                                        }
+                                                    }}>
+                                                        <View className="self-center">
+                                                            <FontAwesome name="search" size={20} color="#ffffff" />
+                                                        </View>
+                                                        <TextInput className="mx-2 text-xl leading-[24px] text-[#ffffff]" value={searchQuery} onChangeText={(t) => setSearchQuery(t)} keyboardAppearance="dark" enterKeyHint="search" ref={searchBarRef} placeholderTextColor={"#ffffff"} placeholder="Search" textAlignVertical="top" maxLength={20} onBlur={closeSearch} onFocus={openSearch}/>
+                                                    </Pressable>
+                                                </MotiView>
+                                                {searchOpen &&
+                                                    <Pressable className="" onPress={closeSearch}>
+                                                        <Text className="text-minty-4 m-auto py-2">Cancel</Text>
+                                                    </Pressable>
+                                                }
+                                            </View>
                                             <ScrollView className="h-full">
 
                                                 <View>

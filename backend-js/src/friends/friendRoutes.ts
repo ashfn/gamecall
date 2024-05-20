@@ -105,6 +105,7 @@ export async function getFriendRequestsRoute(req: Request, res: Response){
 
     const requests = await getFriendRequestsReceived(user.id)
 
+
     return res.send(JSON.stringify(success(requests)))
 
 }

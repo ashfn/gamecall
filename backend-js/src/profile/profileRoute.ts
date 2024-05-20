@@ -1,6 +1,6 @@
 import { Role, User } from "@prisma/client";
 import { authenticateToken } from "../middleware"
-import { getAvatar, setAvatar, setDisplayName, setUsername } from "./profile"
+import { getAvatar, getProfile, searchProfiles, setAvatar, setDisplayName, setUsername } from "./profile"
 import { Request, Response } from 'express';
 import { prisma } from "..";
 import { getTimeEpoch } from "../util";
@@ -11,6 +11,9 @@ import { getAllConnections } from "../friends/friends";
 
 
 export function getAvatarRoute(req: Request, res: Response){
+
+    console.log(`Avatar requested`)
+
     const target = parseInt(req.params.userId, 10)
     if(Number.isNaN(Number(req.params.userId)) || Number.isNaN(target)){
         return res.send(JSON.stringify(clientError("Invalid userId")))
@@ -141,8 +144,29 @@ export function setDisplayNameRoute(req: Request, res: Response){
     })
 }
 
-export function searchProfiles(req: Request, res: Response){
+export function getProfileRoute(req: Request, res: Response){
 
-    
+    const target = parseInt(req.params.userId)
+
+    if(Number.isNaN(Number(req.params.userId)) || Number.isNaN(target)){
+        return res.send(JSON.stringify(clientError("Invalid userId")))
+    }
+
+    getProfile(target).then((searchResults) => {
+        res.send(JSON.stringify(success(searchResults)))
+    })
+
+}
+
+export function searchProfilesRoute(req: Request, res: Response){
+
+    if(!req.body.search){
+        return res.send(JSON.stringify(clientError("Search Query not present")))
+    }
+
+
+    searchProfiles(req.body.search).then((searchResults) => {
+        res.send(JSON.stringify(success(searchResults)))
+    })
 
 }

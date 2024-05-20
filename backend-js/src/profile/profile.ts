@@ -17,7 +17,19 @@ export async function getAvatar(userId: number){
 }
 
 export async function getProfile(userId: number){
-    
+
+    const userProfile = await prisma.user.findFirst({
+        where: {
+            id: userId
+        },
+        select: {
+            username: true,
+            displayName: true,
+            accountCreated: true
+        }
+    })
+
+    return userProfile
 }
 
 /**
@@ -71,12 +83,16 @@ export async function setDisplayName(userId: number, displayName: string){
 
 export async function searchProfiles(search: string){
 
+    search = search.replace(/[^\p{L}\p{N}]+/gu, '');
+
+    console.log(`Searching for profiles with query ${search}`)
+
     const profiles = await prisma.user.findMany({
-        take: 25,
+        take: 10,
         where: {
             OR: [
-                { username: { search: search }},
-                { displayName: { search: search }}
+                { username: { contains: search }},
+                { displayName: { contains: search }}
             ]
         },
         select: {

@@ -71,6 +71,15 @@ export async function refreshToken(refreshToken: string){
         return clientError("Invalid refresh token")
     }
 
+    await prisma.user.update({
+        where: {
+            id: user.id
+        },
+        data: {
+            lastOnline: new Date()
+        }
+    })
+
     const accessToken = createJwt(user)
 
     return success(accessToken)

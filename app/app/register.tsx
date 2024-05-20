@@ -1,6 +1,6 @@
 import { Text, TextInput, View, Button, Pressable, ActivityIndicator, SafeAreaView } from 'react-native';
 import { AuthHeader } from '../src/components/AuthHeader';
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef } from "react"
 import { MaterialIcons } from '@expo/vector-icons';
 import { validateCredentials } from '../util/accountValidation';
 import { AntDesign } from '@expo/vector-icons';

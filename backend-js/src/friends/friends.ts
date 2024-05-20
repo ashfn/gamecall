@@ -108,66 +108,50 @@ export async function createFriendRequest(from: number, to: number){
 // - sent a request
 export async function getAllConnections(userId: number){
 
-    interface Relation {
-        id: number,
-        status: string
-    }
+    const requestsSent: number[] = []
+    const requestsReceived: number[] = []
+    const friends: number[] = []
 
-    // store relations
-    const relations: Relation[] = []
+    const requests = await prisma.friendRequest.findMany({
+        where: {
+            OR: [
+                {
+                    requestDestinationId: userId,
+                    status: FriendRequestStatus.PENDING
+                },
+                {
+                    requestOriginId: userId,
+                    status: FriendRequestStatus.PENDING
+                }
+            ]
+        }
+    })
 
-    async function getRelationsAndProcess(){
 
-        const requests = await prisma.friendRequest.findMany({
-            where: {
-                OR: [
-                    {
-                        requestDestinationId: userId,
-                        status: FriendRequestStatus.PENDING
-                    },
-                    {
-                        requestOriginId: userId,
-                        status: FriendRequestStatus.PENDING
-                    }
-                ]
-            }
-        })
 
-        requests.forEach((reqeust) => {
-            if(reqeust.requestOriginId==userId){
-                relations.push({
-                    id: reqeust.requestDestinationId,
-                    status: "REQUEST_SENT"
-                })
-            }else if(reqeust.requestDestinationId==userId){
-                relations.push({
-                    id: reqeust.requestOriginId,
-                    status: "REQUEST_RECEIVED"
-                })
-            }
-        })
-    }
+    requests.forEach((reqeust) => {
+        if(reqeust.requestOriginId==userId){
+            requestsSent.push(reqeust.requestDestinationId)
+        }else if(reqeust.requestDestinationId==userId){
+            requestsReceived.push(reqeust.requestOriginId)
+        }
+    })
     
-    async function getFriendsAndProcess(){
-        const friends = await getFriends(userId)
-        friends.forEach((friend) => {
-            if(friend.user1==userId){
-                relations.push({
-                    id: friend.user2,
-                    status: "FRIEND"
-                })
-            }
+    const foundFriends = await getFriends(userId)
 
-            if(friend.user2==userId){
-                relations.push({
-                    id: friend.user1,
-                    status: "FRIEND"
-                })
-            }
-        })
+    foundFriends.forEach((friend) => {
+        if(friend.user1==userId){
+            friends.push(friend.user2)
+        }
+        if(friend.user2==userId){
+            friends.push(friend.user1)
+        }
+    })
+
+    return {
+        friends: friends,
+        requestsSent: requestsSent,
+        requestsReceived: requestsReceived
     }
 
-    await Promise.all([getRelationsAndProcess(), getFriendsAndProcess()])
-
-    return relations
 }

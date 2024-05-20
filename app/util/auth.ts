@@ -3,6 +3,53 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { prefix } from "./config"
 import { router } from 'expo-router'
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+export const useAccountDetailsStore = create(
+    (set, get) => ({
+        account: null,
+        lastUpdated: 0,
+        fresh: async () => {
+            try{
+                const acc = await getAccount()
+                console.log("Updating account details store fresh")
+                set({account: acc, lastUpdated: new Date().getTime()})
+            }catch (err) {
+                throw(err)
+            }
+        },
+        update: async () => {
+            const data = get()
+            try{
+                if(new Date().getTime()-data.lastUpdated>20000 || data.account==null){
+                    const acc = await getAccount()
+                    console.log("Updating account details store fresh")
+                    set({account: acc, lastUpdated: new Date().getTime()})
+                }
+            }catch (err) {
+                throw(err)
+            }
+        },
+        logout: async () => {
+            set({account: null})
+        }
+    })
+)
+
+export const logOutState = useAccountDetailsStore((state) => state.logout)
+export const logOutRequests = useAccountDetailsStore((state) => state.clear)
+
+
+async function getAccount(){
+    const details = await authFetch(`${prefix}/account`, {})
+    const response = await details.json()
+    if(response.status==1){
+        return response.data
+    }else{
+        throw new Error("Error fetching account")
+    }  
+}
 
 async function getFreshAccountDetails(){
     try{
@@ -88,6 +135,8 @@ export async function signup(username: string, email: string, password: string){
 }
 
 export async function logout(clearRefreshToken:boolean=true){
+    logOutState()
+    logOutRequests()
     await AsyncStorage.removeItem("accessToken")
     await AsyncStorage.removeItem("refreshToken")
     await AsyncStorage.removeItem("account-details")
@@ -136,14 +185,14 @@ export async function authFetch(url:string, options:any){
     const response = await fetch(url, options)
     if(response.status==499){
         if(options["authfetchalreadydone"]){
-            console.log("Already tried once...")
+            // console.log("Already tried once...")
             logout(true)
             if(router!=null){
                 router.replace("/")
             }
             throw new Error("Refresh token invalid, could not refresh access token")
         }
-        console.log("Token expired :( Trying to refresh")
+        // console.log("Token expired :( Trying to refresh")
         try{
             await refreshAccessToken()
                 
@@ -151,7 +200,7 @@ export async function authFetch(url:string, options:any){
 
             return await authFetch(url, options)
         } catch(err) {
-            console.log("Encountered error refreshing token")
+            // console.log("Encountered error refreshing token")
             throw new Error("Refresh token invalid, could not refresh access token")
         }
 

@@ -1,8 +1,8 @@
 import { Modal, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { Link, router, Stack, useFocusEffect, useRouter } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
-import { authFetch, getAccountDetails, logout } from '../util/auth';
+import { useState, useRef } from 'react';
+import { authFetch, getAccountDetails, logout, useAccountDetailsStore } from '../util/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { FontAwesome6 } from '@expo/vector-icons';
 
@@ -20,28 +20,21 @@ import { InfoModal } from '../src/components/TextModal';
 
 export default function Page() {
 
-    const [account, setAccount] = useState(null)
+
+    const account = useAccountDetailsStore((state) => state.account)
+    const updateAccount = useAccountDetailsStore((state) => state.fresh)
+    console.log(account)
 
     const [modalVisible, setModalVisible] = useState(false);
+    const [key, setKey] = useState(0)
 
     const [blur, setBlur] = useState(0)
     const displaynameModalRef = useRef(null)
     const infoModal = useRef(null)
-    const [userId, setUserId] = useState(null)
     
 
     if(!account){
-        reloadAccount()
-    }
-
-    function reloadAccount(forceNew=false){
-        getAccountDetails(forceNew)
-        .then((accountJson) => {
-            if(userId!=accountJson.id){
-                setUserId(accountJson.id)
-            }
-            setAccount(accountJson)
-        })
+        updateAccount()
     }
 
     async function updateDisplayname(displayname){
@@ -57,7 +50,7 @@ export default function Page() {
         const setDisplaynameResultJson = await setDisplaynameResult.json()
 
         if(setDisplaynameResultJson.status==1){
-            reloadAccount(true)
+            updateAccount()
         }else{
             if(setDisplaynameResultJson.status==-1){
                 infoModal.current.openModal("Error", setDisplaynameResultJson.error, "OK")
@@ -91,11 +84,8 @@ export default function Page() {
                 return response.json()
             }).then((json) => {
                 // console.log(json)
-                Promise.all([Image.clearDiskCache(), Image.clearMemoryCache()]).then(() => {
-                    const x = userId
-                    setUserId(-1)
-                    setUserId(x)
-                    
+                Promise.all([Image.clearDiskCache(), Image.clearMemoryCache()]).then(() => {   
+                    setKey(key+1)
                 })
             })
         }
@@ -123,7 +113,7 @@ export default function Page() {
                                 <View className="flex justify-center items-center">
                                     <Pressable onPressIn={()=> pickImage()}>
                                         <View className="">
-                                            <Image className="rounded-full" height={125} width={125} source={`${prefix}/profile/${userId}/avatar`} cachePolicy={"disk"}  />
+                                            <Image key={key} className="rounded-full" height={125} width={125} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"}  />
                                             <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
                                         </View>
                                     </Pressable>

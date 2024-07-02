@@ -14,36 +14,85 @@ export enum FriendshpStatus {
     NONE
 }
 
-// export async function setStatus(userId: number, status: FriendshpStatus){
-//     if(status==FriendshpStatus.NONE){
 
-//     }
-//     await AsyncStorage.setItem(`userstatus-${userId}`, status.toString())
-// }
+export const useProfileCache = create(
+    (set, get) => ({
+        profiles: new Map(),
+        getProfile: async (userid: number) => {
+            console.log(`GET PROFILE ${userid}`)
+            const profiles = get().profiles
+            if(profiles.has(userid)){
+                return profiles.get(userid)
+            }else{
+                const res = await authFetch(`${prefix}/profile/${userid}`, {})
+                const res2 = await res.json()
+                if(res2.status==1){
+                    set({
+                        profiles: new Map(profiles).set(userid, res2.data)
+                    })
+                    return res2.data
+                }else{
+                    console.log(res2.error)
+                }
+            }
+        },
+        update: async (userid: number) => {
+            const profiles = get().profiles
 
-// export async function getStatus(userId: number): Promise<FriendshpStatus>{
-//     const status = await AsyncStorage.getItem(`userstatus-${userId}`)
-//     if(status==null){
-//         return FriendshpStatus.NONE
-//     }else{
-//         return FriendshpStatus[status]
-//     }
-// }
+
+
+            const res = await authFetch(`${prefix}/profile/${userid}`, {})
+            const res2 = await res.json()
+
+            console.log(res2)
+
+            if(res2.status==1){
+                set({
+                    profiles: new Map(profiles).set(userid, res2.data)
+                })
+                return res2.data
+            }else{
+                throw new Error(res2)
+            }
+        },
+        clear: () => {
+            set({
+                profiles: new Map()
+            })
+        }
+    })
+)
 
 export const useFriendRequestsStore = create(
     (set, get) => ({
         requests: null,
-        lastUpdated: new Date().getTime(),
+        localAccepted: [],
+        localDeclined: [],
+        lastUpdated: 1,
+        localAccept: (userid: number) => {
+            let localAccepted = get().localAccepted
+            if(!localAccepted.includes(userid)){
+                localAccepted.push(userid)
+            }
+            set({localAccepted: localAccepted})
+        },
+        localDecline: (userid: number) => {
+            let localDeclined = get().localDeclined
+            if(!localDeclined.includes(userid)){
+                localDeclined.push(userid)
+            }
+            set({localDeclined: localDeclined})
+        },
         fresh: async () => {
-            set({requests: await getRequests(), lastUpdated: new Date().getTime()})
+            const requests = await getRequests()
+            set({requests: requests, lastUpdated: new Date().getTime(), localAccepted: [], localDeclined: []})
         },
         update: async () => {
-            console.log("Updating friend requests store")
             const data = get()
             set({lastUpdated: new Date().getTime()})
-            console.log(new Date().getTime()-data.lastUpdated)
             if(new Date().getTime()-data.lastUpdated>5000){
-                set({requests: await getRequests() })
+                const requests = await getRequests()
+                set({requests: requests, localAccepted: [], localDeclined: []})
             }
         },
         clear: () => {
@@ -67,10 +116,39 @@ export const useConnectionsStore = create(
         requestsSent: null,
         requestsReceived: null,
         friends: null,
-        lastUpdated: new Date().getTime(),
+        lastUpdated: 1,
+        forceChange: (id: number, newStatus: number) => {
+            const data = get()
+            let requestsSent = data.requestsSent
+            let requestsReceived = data.requestsReceived
+            let friends = data.friends
+            
+            requestsSent=requestsSent.filter((x) => x!=id)
+            requestsReceived=requestsReceived.filter((x) => x!=id)
+            friends=friends.filter((x) => x!=id)
+
+            if(newStatus==1){
+                requestsSent.push(id)
+            }
+            if(newStatus==2){
+                requestsReceived.push(id)
+            }
+            if(newStatus==3){
+                friends.push(id)
+            }
+
+            set({
+                friends: friends,
+                requestsSent: requestsSent,
+                requestsReceived: requestsReceived
+            })
+
+        },
         lookup: (id: number) => {
             const data = get()
-            console.log(data)
+            if(data.requestsSent==null || data.requestsReceived==null || data.friends==null){
+                return 0
+            }
             if(data.requestsSent.includes(id)){
                 return 1
             }
@@ -85,21 +163,23 @@ export const useConnectionsStore = create(
             }
         },
         fresh: async () => {
+
             const connections = await getAllRelations()
+            console.log(`Received fresh connections: ${JSON.stringify(connections)}`)
             set({
                 requestsSent: connections.requestsSent,
                 requestsReceived: connections.requestsReceived,
                 friends: connections.friends,
                 lastUpdated: new Date().getTime()
             })
+
+            console.log(`Data dump: ${JSON.stringify(get())}`)
         },
         update: async () => {
-            console.log("Updating connections store")
             const data = get()
             if(new Date().getTime()-data.lastUpdated>15000){
                 set({lastUpdated: new Date().getTime()})
                 const connections = await getAllRelations()
-                console.log(connections)
                 set({
                     requestsSent: connections.requestsSent,
                     requestsReceived: connections.requestsReceived,
@@ -119,9 +199,7 @@ export const useConnectionsStore = create(
 
 async function getAllRelations(){
     const allConnectionsRes = await authFetch(`${prefix}/connections`, {})
-    const allConnectionsJson = await allConnectionsRes.json()
-    console.log(`Fetched relations with code ${allConnectionsJson.status}`)
-    
+    const allConnectionsJson = await allConnectionsRes.json()    
     if(allConnectionsJson.status==1){
         const connections = allConnectionsJson.data
         return connections

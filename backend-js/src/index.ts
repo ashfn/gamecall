@@ -5,8 +5,10 @@ import { register, login, refreshToken, logout } from './account/account';
 import dotenv from "dotenv"
 import { authenticateToken, userDetails, userFullContext } from './middleware';
 import { getAvatarRoute, searchProfilesRoute, setAvatarRoute, setDisplayNameRoute, setUsernameRoute, getProfileRoute } from './profile/profileRoute';
-import { addFriendRequestRoute, denyFriendRequestRoute, getConnectionsRoute, getFriendRequestsRoute } from './friends/friendRoutes';
+import { acceptFriendRequestRoute, addFriendRequestRoute, denyFriendRequestRoute, getConnectionsRoute, getFriendRequestsRoute, removeFriendRoute } from './friends/friendRoutes';
 import { success } from './status';
+import { endGameRoute, getActiveGamesRoute, sendGameRoute, updateGameRoute } from './game/gameRoutes';
+import { TIC_TAC_TOE } from './game/gamestate/games/TIC_TAC_TOE';
 
 dotenv.config()
 
@@ -56,24 +58,22 @@ app.get('/account', [authenticateToken, userDetails], (req: Request, res: Respon
 })
 
 app.post('/profile/:userId/avatar', [authenticateToken, userDetails], setAvatarRoute)
-
 app.get('/profile/:userId/', [authenticateToken], getProfileRoute)
-
 app.get('/profile/:userId/avatar', [], getAvatarRoute)
-
 app.post('/profile/:userId/displayname', [authenticateToken, userDetails], setDisplayNameRoute)
-
 app.post('/profile/:userId/username', [authenticateToken, userDetails], setUsernameRoute)
-
 app.post('/friendRequest/:userId', [authenticateToken, userFullContext], addFriendRequestRoute)
-
 app.get('/friendRequests', [authenticateToken, userDetails], getFriendRequestsRoute)
-
+app.post('/removeFriend/:userId', [authenticateToken, userDetails], removeFriendRoute)
 app.get('/connections', [authenticateToken, userDetails], getConnectionsRoute)
-
 app.post('/denyFriendRequest/:userId', [authenticateToken, userDetails], denyFriendRequestRoute)
-
+app.post('/acceptFriendRequest/:userId', [authenticateToken, userDetails], acceptFriendRequestRoute)
 app.post('/searchProfiles', [authenticateToken], searchProfilesRoute)
+app.post('/newGame', [authenticateToken, userDetails], sendGameRoute)
+app.post('/endGame', [authenticateToken, userDetails], endGameRoute)
+app.post('/updateGame', [authenticateToken, userDetails], updateGameRoute)
+app.get('/games', [authenticateToken, userDetails], getActiveGamesRoute)
+app.use('/assets', express.static('public'))
 
 app.get('/logout', authenticateToken, (req: Request, res: Response) => {
     const user: User = res.locals.user

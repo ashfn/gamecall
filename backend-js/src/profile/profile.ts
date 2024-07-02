@@ -25,7 +25,8 @@ export async function getProfile(userId: number){
         select: {
             username: true,
             displayName: true,
-            accountCreated: true
+            accountCreated: true,
+            id: true
         }
     })
 
@@ -91,8 +92,14 @@ export async function searchProfiles(search: string){
         take: 10,
         where: {
             OR: [
-                { username: { contains: search }},
-                { displayName: { contains: search }}
+                { username: { 
+                    contains: search,
+                    mode: 'insensitive'
+                 }},
+                { displayName: {
+                    contains: search ,
+                    mode: 'insensitive'
+                }}
             ]
         },
         select: {

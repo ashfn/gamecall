@@ -63,4 +63,27 @@ model Friendship {
   user2 Int
   created DateTime @default(now())
   lastActivity DateTime @default(now())
+  currentGameId Int @default(-1)
+}
+
+enum GameType {
+  TIC_TAC_TOE
+}
+
+enum GameStatus {
+  STARTED
+  CANCELLED
+  ENDED
+}
+
+model Game {
+  id Int @id @default(autoincrement())
+  @@unique([player1, player2])
+  type GameType // the game type
+  status GameStatus
+  player1 Int // the player that initially sent the game
+  player2 Int // the player that initially received the game
+  winner Int // the final winner of the game, -1 if it is a draw, 0 if the game is in progress
+  waitingOn Int // whose turn it is
+  gameStateJson String // the state of the game stored in json - e.g. the board or points
 }

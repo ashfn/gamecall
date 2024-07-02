@@ -17,7 +17,7 @@ function createJwt(user: User){
     return jwt.sign({
         "id":user.id,
         "role":user.role
-    }, secret, {expiresIn: '5m'})
+    }, secret, {expiresIn: '1m'})
 }
 
 async function updateRefresh(account: User): Promise<string>{
@@ -79,6 +79,8 @@ export async function refreshToken(refreshToken: string){
             lastOnline: new Date()
         }
     })
+
+    console.log(`Refreshed token for ${user.id}`)
 
     const accessToken = createJwt(user)
 

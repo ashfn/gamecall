@@ -7,26 +7,28 @@ import { StatusBar } from 'expo-status-bar';
 
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router/stack';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function HomeLayout() {
 
     return(
         <>
-
+            <StatusBar style={"light"} />
             <SafeAreaProvider>
-                
-                <View className="bg-bg h-full">
-                    {/* For some f*cking reason we need to have two??!? */}
-                    <Stack
-                            screenOptions={{
-                                headerShown: false,
-                                headerTintColor: '#fff',
-                                headerTitleStyle: {
-                                fontWeight: 'bold',
-                                },
-                            }}
-                        />
-                </View>
+                <GestureHandlerRootView>
+                    <View className="bg-bg h-full">
+                        {/* For some f*cking reason we need to have two??!? */}
+                        <Stack
+                                screenOptions={{
+                                    headerShown: false,
+                                    headerTintColor: '#fff',
+                                    headerTitleStyle: {
+                                    fontWeight: 'bold',
+                                    },
+                                }}
+                            />
+                    </View>
+                </GestureHandlerRootView>
             </SafeAreaProvider>
         </>
     );

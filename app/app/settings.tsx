@@ -117,13 +117,29 @@ export default function Page() {
                                             <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
                                         </View>
                                     </Pressable>
-                                        <Pressable onPressIn={() => displaynameModalRef.current.openModal()}>
-                                            <View className="flex flex-row mt-2 p-2 rounded-lg bg-bg2 items-center">
-                                                <Text className="text-[#ffffff] pastel-2 text-2xl mr-2">{account.displayName}</Text>
-                                                <FontAwesome6 name="edit" size={24} color={"#ffffff"} />
-                                            </View>
-                                        </Pressable>
+                                    <Pressable onPressIn={() => displaynameModalRef.current.openModal()}>
+                                        <View className="flex flex-row mt-2 p-2 rounded-lg bg-bg2 items-center">
+                                            <Text className="text-[#ffffff] pastel-2 text-2xl mr-2">{account.displayName}</Text>
+                                            <FontAwesome6 name="edit" size={24} color={"#ffffff"} />
+                                        </View>
+                                    </Pressable>
                                 </View>
+                                <Pressable className="mt-10" onPressIn={() => {
+                                    logout().then(() => router.replace("/"))
+                                    
+                                    // testRef.current.openModal("Test", "haha testing this", "cool")
+                                    // console.log(testRef)
+                                    // testRef.current.openModal()
+                                }} >
+                                    <View className={"bg-minty-4 border-solid border-minty-4 border-[1px] rounded-lg ml-8 mr-8 h-14 "}>
+                                        <View className="m-auto flex flex-row">
+                                            <Text className="text-bg text-center text-xl ">Log out</Text>
+
+                                            {/* <Counter ref={testRef} /> */}
+                                        </View>
+                                    </View>
+                                    
+                                </Pressable>
                             </View>
                             
                         </>

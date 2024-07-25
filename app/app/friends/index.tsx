@@ -415,7 +415,7 @@ export default function friendsPage(){
                                                                 <FontAwesome name="search" size={20} color="#ffffff" />
                                                             </View>
                                                             <TextInput 
-                                                                className="mx-2 text-xl leading-[24px] text-[#ffffff]" 
+                                                                className="mx-2 text-xl leading-[24px] text-[#ffffff] w-[90%]" 
                                                                 onChangeText={(t) => setSearch(t)} 
                                                                 keyboardAppearance="dark" 
                                                                 enterKeyHint="search" 

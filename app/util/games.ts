@@ -6,14 +6,22 @@ export const useGamesStore = create(
     (set, get) => ({
         games: null,
         lastUpdated: 1,
+        addGame: (game) => {
+            const games = get().games
+            set({
+                games: [...games, game]
+            })
+        },
         getGameByUser: (user1: number, user2: number) => {
             const games = get().games
+            let rgame = null
             games.forEach((game) => {
+                console.log(`${game.player1} ${game.player2} ${user1} ${user2}`)
                 if((game.player1==user1 && game.player2 == user2) || (game.player1==user2 && game.player2 == user1)){
-                    return game
+                    rgame=game
                 }
             })
-            return null
+            return rgame
         },
         get: async () => {
             const data = get()

@@ -134,7 +134,7 @@ export default function Route() {
                 <View className="p-2 h-full">
                     <View className="flex flex-row mb-4">
                         <Pressable className="basis-1/3 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
-                        <Text className="basis-1/3 text-minty-4 text-l text-center font-bold">{userData!=undefined?userData.username:""} {status}</Text>
+                        <Text className="basis-1/3 text-minty-4 text-l text-center font-bold">{userData!=undefined?userData.username:""}</Text>
                     </View>
                     {userData==undefined ? (
                         <View>

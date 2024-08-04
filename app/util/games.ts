@@ -2,6 +2,14 @@ import { create } from "zustand";
 import { authFetch } from "./auth";
 import { prefix } from "./config";
 
+const games = {
+    "TIC_TAC_TOE": "Tic Tac Toe"
+}
+
+export function getGameName(gameId: string){
+    return games[gameId]
+}
+
 export const useGamesStore = create(
     (set, get) => ({
         games: null,
@@ -15,13 +23,29 @@ export const useGamesStore = create(
         getGameByUser: (user1: number, user2: number) => {
             const games = get().games
             let rgame = null
-            games.forEach((game) => {
-                console.log(`${game.player1} ${game.player2} ${user1} ${user2}`)
-                if((game.player1==user1 && game.player2 == user2) || (game.player1==user2 && game.player2 == user1)){
-                    rgame=game
-                }
-            })
+            if(games!=null){
+                games.forEach((game) => {
+                    console.log(`${game.player1} ${game.player2} ${user1} ${user2}`)
+                    if((game.player1==user1 && game.player2 == user2) || (game.player1==user2 && game.player2 == user1)){
+                        rgame=game
+                    }
+                })
+            }
+
             return rgame
+        },
+        getGameById: (gameId: number) => {
+            const games = get().games
+            let rgame = null
+            if(games!=null){
+                games.forEach((game) => {
+                    if(game.id==gameId){
+                        rgame=game
+                    }
+                })
+            }
+
+            return rgame  
         },
         get: async () => {
             const data = get()
@@ -63,3 +87,9 @@ export const useGamesStore = create(
         }
     })
 )
+
+export const gamesConfig = [
+    {
+        id: "TIC_TAC_TOE", name: "Tic Tac Toe", component: () => import('../src/games/game_components/TicTacToe')
+    }
+]

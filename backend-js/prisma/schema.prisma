@@ -74,6 +74,7 @@ enum GameStatus {
   STARTED
   CANCELLED
   ENDED
+  ENDED_UNOPENED
 }
 
 model Game {
@@ -86,4 +87,5 @@ model Game {
   winner Int // the final winner of the game, -1 if it is a draw, 0 if the game is in progress
   waitingOn Int // whose turn it is
   gameStateJson String // the state of the game stored in json - e.g. the board or points
+  lastActivity DateTime @default(now())
 }

@@ -1,5 +1,6 @@
 import { GameStatus } from "@prisma/client";
 import { prisma } from "..";
+import { GameState } from "./gamestate/gamestate";
 
 
 export async function getAllActiveGames(userId: number){
@@ -17,7 +18,10 @@ export async function getAllActiveGames(userId: number){
                     ]
                 },
                 {
-                    status: GameStatus.STARTED
+                    OR: [
+                        {status: GameStatus.STARTED},
+                        {status: GameStatus.ENDED_UNOPENED}
+                    ]
                 }
             ]
 
@@ -43,3 +47,19 @@ export async function getAllGames(userId: number){
 
     return games
 }
+
+export async function updateGame(gameId: number, newState: GameState, waitingOn: number, winner: number){
+    await prisma.game.update({
+        where: {
+            id: gameId
+        },
+        data: {
+            gameStateJson: JSON.stringify(newState),
+            waitingOn: waitingOn,
+            lastActivity: new Date(),
+            status: winner==null?GameStatus.STARTED:GameStatus.ENDED_UNOPENED,
+            winner: winner==null?0:winner
+        }
+    })
+}
+

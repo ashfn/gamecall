@@ -133,10 +133,6 @@ export async function endGameRoute(req: Request, res: Response){
 
     const gameId = parseInt(req.body.gameId, 10)
 
-    if(Number.isNaN(Number(req.body.user)) || Number.isNaN(gameId)){
-        return res.send(JSON.stringify(clientError("Invalid userId")))
-    }
-
     const game = await prisma.game.findFirst({
         where: {
             id: gameId
@@ -226,9 +222,11 @@ export async function updateGameRoute(req: Request, res: Response){
         return res.send(JSON.stringify(clientError("Game exists on database but not on backend")))
     }
 
+    
     const result = await gameMutator.processMove(JSON.parse(game.gameStateJson), user.id, {
         actions: moves
-    })
+    }, game.id)
+    
 
     if(result.status==GameMoveStatus.INVALID){
         return res.send(JSON.stringify(clientError("Invalid move could not be processed")))
@@ -245,7 +243,8 @@ export async function updateGameRoute(req: Request, res: Response){
         },
         data: {
             gameStateJson: JSON.stringify(result.state),
-            waitingOn: (user.id==game.player1?game.player2:game.player1)
+            waitingOn: (user.id==game.player1?game.player2:game.player1),
+            lastActivity: new Date()
         }
     })
 

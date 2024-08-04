@@ -6,7 +6,7 @@ import { validateCredentials } from '../util/accountValidation';
 import { AntDesign } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
-import { login, signup, authFetch, getAccountDetails } from "../util/auth"
+import { login, signup, authFetch, getAccountDetails, useAccountDetailsStore } from "../util/auth"
 
 export default function Page() {
 
@@ -19,6 +19,8 @@ export default function Page() {
 
     const [account, setAccount] = useState(null)
     const [password, setPassword] = useState(null)
+
+    const refresh = useAccountDetailsStore((state) => state.fresh)
 
     function submit(){
         accountRef.current.blur()
@@ -42,7 +44,10 @@ export default function Page() {
                     break
                 }
                 case 1: {
-                    getAccountDetails(true).then(() => router.navigate("."))
+
+                    refresh()
+                        .then(() => setTimeout(() => {}, 100))
+                        .then(() => router.navigate("."))
                 }
             }
         })

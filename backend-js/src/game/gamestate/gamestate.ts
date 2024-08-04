@@ -23,7 +23,7 @@ export interface GameMoveResult {
 
 export interface GameStateManipulator {
     init(user1: number, user2: number): GameState
-    processMove(state: GameState, userId: number, move: GameMove): Promise<GameMoveResult>
+    processMove(state: GameState, userId: number, move: GameMove, gameId: number): Promise<GameMoveResult>
 }
 
 export function getGame(gameType: GameType){
@@ -45,5 +45,13 @@ export function getGameType(gameName: string){
         default: {
             return null
         }
+    }
+}
+
+export function getOtherUser(gameState: GameState, currentUser: number){
+    if(gameState.player1==currentUser){
+        return gameState.player2
+    }else{
+        return gameState.player1
     }
 }

@@ -11,9 +11,10 @@ import { useConnectionsStore, useFriendRequestsStore, useProfileCache } from '..
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { setStatusBarStyle } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useGamesStore } from '../util/games';
+import { getGameName, useGamesStore } from '../util/games';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { GamePicker } from '../src/components/GamePicker';
+import { timeAgo } from '../util/time';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -51,12 +52,23 @@ function FriendView(props){
         .runOnJS(true)
         .enabled(enabled)
         .onStart(() => {
+
+            // if no current game - open game picker
+            if(game==null){
+                props.gamepicker.current.openModal(props.user.id)
+            }
+
+            // if there is a game - open the game
+            if(game!=null){
+                router.push(`/game/${game.id}`)
+            }
+
             // setEnabled(false)
             // timeoutRef.current = setTimeout(() => {
             //     setEnabled(true);
             // }, 400);
             // router.push(`/sendgame/${props.user.id}`)
-            props.gamepicker.current.openModal(props.user.id)
+
         })
 
     console.log(`game: ${JSON.stringify(game)}`)
@@ -76,10 +88,22 @@ function FriendView(props){
                             <Text className="text-lg text-[#ffffff]">
                                 {props.user.displayName}
                             </Text>
-                            
-                            <Text className="text-sm text-[#686a6e] ">
-                                Send {props.user.username} a game
-                            </Text>
+                            {(game==null) && 
+                                <Text className="text-sm text-[#686a6e] ">
+                                    Send {props.user.username} a game 
+                                </Text>
+                            }
+                            {(game!=null && game.waitingOn!=props.myid) && 
+                                <Text className="text-sm text-[#686a6e] ">
+                                    Sent {getGameName(game.type)} ∙ <Text className="">{timeAgo(new Date(game.lastActivity))}</Text>
+                                </Text>
+                            }
+                            {(game!=null && game.waitingOn==props.myid) && 
+                                <Text className="text-sm text-pastel-2 font-bold ">
+                                    {getGameName(game.type)} ∙ <Text className="">{timeAgo(new Date(game.lastActivity))}</Text>
+                                </Text>
+                            }
+
                         </View>
                         <View className="basis-2/6 justify-center">
 
@@ -172,6 +196,8 @@ export default function Page() {
             })
             .catch((error) => {
                 console.error("Error loading data:", error);
+                console.log(`${JSON.stringify(account)} ${JSON.stringify(lastUpdated)}`)
+                setAppIsReady(true)
                 // Optionally handle the error
             });
     }, [freshConnections, updateAccount, updateRequests]);
@@ -200,7 +226,7 @@ export default function Page() {
                         <>
                         </>
                     }
-                    {(account==null && lastUpdated!=0) && 
+                    {(account==null ) && 
                         <>
                             <Text className="text-2xl text-minty-4 text-center">Welcome to GameCall</Text>
                             <View className="mt-24 flex flex-row ">

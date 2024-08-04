@@ -125,7 +125,9 @@ export default function Page() {
                                     </Pressable>
                                 </View>
                                 <Pressable className="mt-10" onPressIn={() => {
-                                    logout().then(() => router.replace("/"))
+                                    logout().then(() => router.navigate("/")).catch((err) => {
+                                        console.error(err)
+                                    })
                                     
                                     // testRef.current.openModal("Test", "haha testing this", "cool")
                                     // console.log(testRef)

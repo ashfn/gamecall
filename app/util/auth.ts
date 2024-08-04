@@ -31,15 +31,22 @@ export const useAccountDetailsStore = create(
                 throw(err)
             }
         },
+        get: async () => {
+            const data = get()
+            if(data.account==null){
+                const acc = await getAccount()
+                console.log("Updating account details store fresh")
+                set({account: acc, lastUpdated: new Date().getTime()})
+                return acc
+            }else{
+                return data.account
+            }
+        },
         logout: async () => {
             set({account: null})
         }
     })
 )
-
-export const logOutState = useAccountDetailsStore((state) => state.logout)
-export const logOutRequests = useAccountDetailsStore((state) => state.clear)
-
 
 async function getAccount(){
     const details = await authFetch(`${prefix}/account`, {})
@@ -135,8 +142,8 @@ export async function signup(username: string, email: string, password: string){
 }
 
 export async function logout(clearRefreshToken:boolean=true){
-    logOutState()
-    logOutRequests()
+    useAccountDetailsStore.getState().logout()
+    
     await AsyncStorage.removeItem("accessToken")
     await AsyncStorage.removeItem("refreshToken")
     await AsyncStorage.removeItem("account-details")

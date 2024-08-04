@@ -1,4 +1,4 @@
-import { Pressable, View, Text, ScrollView, TextInput, ActivityIndicator, RefreshControl, TouchableWithoutFeedback } from "react-native";
+import { Pressable, View, Text, ScrollView, TextInput, ActivityIndicator, RefreshControl, TouchableWithoutFeedback, Animated } from "react-native";
 import { ConfirmModal, InputModal } from "../../src/components/InputModal";
 import { ErrorModal, InfoModal } from "../../src/components/TextModal";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,6 +18,34 @@ import { useFriendSearchStore } from "../../util/searchbar";
 import { MotiPressable } from "moti/interactions";
 
 import { Gesture, GestureDetector } from "react-native-gesture-handler"
+
+const forSlideFromLeft = ({ current, next, layouts: { screen } }: slideProps) => {
+    const progress = Animated.add(
+      current.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+      next
+        ? next.progress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 1],
+            extrapolate: 'clamp',
+          })
+        : 0
+    );
+  
+    const translateX = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [-screen.width, 0],
+    });
+  
+    return {
+      cardStyle: {
+        transform: [{ translateX }],
+      },
+    };
+  };
 
 function openUserProfile(userId){
     router.push(`/user/${userId}`)
@@ -126,6 +154,7 @@ function SearchResult(props){
 
     return (
         <GestureDetector gesture={openProfile}>
+
             <View className="rounded-lg mb-2">
                 <View className="flex flex-row">
                     <View className="basis-1/6 self-center">
@@ -249,6 +278,7 @@ function FriendRequest(props){
     
     return (
         <GestureDetector gesture={tap}>
+
             <View className="rounded-lg" key={props.request.requestOriginId}>
                 <View className="flex flex-row">
                     <View className="basis-1/4 self-center">

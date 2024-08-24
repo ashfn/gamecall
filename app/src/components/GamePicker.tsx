@@ -43,8 +43,6 @@ export const GamePicker = forwardRef((props, ref) => {
         closeModal
     }));
 
-    console.log(`Modal Visible: ${visible}`)
-
     const games = [{
       id: 1,
       name: "TIC_TAC_TOE"

@@ -186,13 +186,14 @@ export async function endGameRoute(req: Request, res: Response){
 
 // POST /updateGame
 export async function updateGameRoute(req: Request, res: Response){
+
+    console.log(`updateGame: ${JSON.stringify(req.body)}`)
+
     const user: User = res.locals.user
 
     const gameId = parseInt(req.body.gameId, 10)
 
-    if(Number.isNaN(Number(req.body.user)) || Number.isNaN(gameId)){
-        return res.send(JSON.stringify(clientError("Invalid userId")))
-    }
+    console.log(`gameId ${gameId}`)
 
     const game = await prisma.game.findFirst({
         where: {
@@ -200,6 +201,8 @@ export async function updateGameRoute(req: Request, res: Response){
         }
     })
     
+    console.log(`Found game: ${JSON.stringify(game)}`)
+
     if(game==null){
         return res.send(JSON.stringify(clientError("Invalid game id")))
     }
@@ -212,6 +215,9 @@ export async function updateGameRoute(req: Request, res: Response){
         return res.send(JSON.stringify(clientError("This game is not in progress")))
     }
 
+    if(game.waitingOn!=user.id){
+        return res.send(JSON.stringify(clientError("It is not your turn of the game")))
+    }
 
     const gameType = game.type
     const gameMutator = getGame(gameType)
@@ -230,26 +236,10 @@ export async function updateGameRoute(req: Request, res: Response){
 
     if(result.status==GameMoveStatus.INVALID){
         return res.send(JSON.stringify(clientError("Invalid move could not be processed")))
-    }
-
-    if(result.status==GameMoveStatus.ENDED){
+    }else if(result.status==GameMoveStatus.ENDED){
         // when the game is ended, the actual game logic updates the game so we don't need to do anything
-        return res.send(JSON.stringify(success()))
+        return res.send(JSON.stringify(success(result)))
+    }else{
+        return res.send(JSON.stringify(success(result)))
     }
-
-    await prisma.game.update({
-        where: {
-            id: gameId
-        },
-        data: {
-            gameStateJson: JSON.stringify(result.state),
-            waitingOn: (user.id==game.player1?game.player2:game.player1),
-            lastActivity: new Date()
-        }
-    })
-
-    // DISPATCH NOTIFICATION
-
-    return res.send(JSON.stringify(success()))
-
 }

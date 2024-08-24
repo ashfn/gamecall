@@ -1,4 +1,4 @@
-import { GameType, User } from "@prisma/client"
+import { Game, GameType, User } from "@prisma/client"
 import { TIC_TAC_TOE } from "./games/TIC_TAC_TOE"
 
 export interface GameState {
@@ -19,6 +19,7 @@ export enum GameMoveStatus {
 export interface GameMoveResult {
     status: GameMoveStatus
     state: GameState
+    game: any
 }
 
 export interface GameStateManipulator {

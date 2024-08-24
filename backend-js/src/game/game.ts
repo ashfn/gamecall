@@ -28,6 +28,8 @@ export async function getAllActiveGames(userId: number){
         }
     })
 
+    console.log(`found games ${JSON.stringify(games)}`)
+
     return games
 }
 
@@ -49,7 +51,7 @@ export async function getAllGames(userId: number){
 }
 
 export async function updateGame(gameId: number, newState: GameState, waitingOn: number, winner: number){
-    await prisma.game.update({
+    return await prisma.game.update({
         where: {
             id: gameId
         },
@@ -57,7 +59,7 @@ export async function updateGame(gameId: number, newState: GameState, waitingOn:
             gameStateJson: JSON.stringify(newState),
             waitingOn: waitingOn,
             lastActivity: new Date(),
-            status: winner==null?GameStatus.STARTED:GameStatus.ENDED_UNOPENED,
+            status: winner==0?GameStatus.STARTED:GameStatus.ENDED_UNOPENED,
             winner: winner==null?0:winner
         }
     })

@@ -39,12 +39,12 @@ export const useProfileCache = create(
         update: async (userid: number) => {
             const profiles = get().profiles
 
-
+            console.log(`Updating profile with userid: ${userid}`)
 
             const res = await authFetch(`${prefix}/profile/${userid}`, {})
             const res2 = await res.json()
 
-            console.log(res2)
+            console.log(`RES2 ${JSON.stringify(res2)}`)
 
             if(res2.status==1){
                 set({
@@ -165,7 +165,6 @@ export const useConnectionsStore = create(
         fresh: async () => {
 
             const connections = await getAllRelations()
-            console.log(`Received fresh connections: ${JSON.stringify(connections)}`)
             set({
                 requestsSent: connections.requestsSent,
                 requestsReceived: connections.requestsReceived,
@@ -173,7 +172,6 @@ export const useConnectionsStore = create(
                 lastUpdated: new Date().getTime()
             })
 
-            console.log(`Data dump: ${JSON.stringify(get())}`)
         },
         update: async () => {
             const data = get()

@@ -9,6 +9,8 @@ const GameLoader = forwardRef((props, ref) => {
 
     const gameData = props.gameData
     const account = props.account
+    const setPreventLeave = props.setPreventLeave
+    const setLoading = props.setLoading
 
     const getProfile = useProfileCache((state) => state.getProfile)
 
@@ -38,12 +40,18 @@ const GameLoader = forwardRef((props, ref) => {
     }, [gameData.type]);
 
     useEffect(() => {
+        if(gameData.player1==undefined){
+            console.log("WOOOAH")
+        }
         getProfile(gameData.player1).then((data) => {
             setPlayer1(data)
         })
     }, [player1])
 
     useEffect(() => {
+        if(gameData.player1==undefined){
+            console.log("WOOOAH")
+        }
         getProfile(gameData.player2).then((data) => {
             setPlayer2(data)
         })
@@ -64,10 +72,6 @@ const GameLoader = forwardRef((props, ref) => {
         return json
     }
 
-    useImperativeHandle(ref, () => ({
-        preventLeaveRef
-    }))
-
     return (
         <>
             {ready &&
@@ -77,7 +81,8 @@ const GameLoader = forwardRef((props, ref) => {
                     game={gameData}
                     sendMove={sendMove}
                     account={account}
-                    ref={preventLeaveRef}
+                    setPreventLeave={setPreventLeave}
+                    setLoading={setLoading}
                 />
             }
             {!ready && 

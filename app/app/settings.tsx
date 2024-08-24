@@ -18,6 +18,10 @@ import { BlurView } from 'expo-blur';
 import { InputModal } from '../src/components/InputModal';
 import { InfoModal } from '../src/components/TextModal';
 
+
+import * as Updates from 'expo-updates'
+import { GameOver } from '../src/components/GameOver';
+
 export default function Page() {
 
 
@@ -32,6 +36,7 @@ export default function Page() {
     const displaynameModalRef = useRef(null)
     const infoModal = useRef(null)
     
+    const gameoverref = useRef(null)
 
     if(!account){
         updateAccount()
@@ -100,6 +105,7 @@ export default function Page() {
                 </>
             }
             <SafeAreaView>
+                <GameOver ref={gameoverref} />
                 <View className="">
                     {account && 
 
@@ -125,9 +131,15 @@ export default function Page() {
                                     </Pressable>
                                 </View>
                                 <Pressable className="mt-10" onPressIn={() => {
-                                    logout().then(() => router.navigate("/")).catch((err) => {
-                                        console.error(err)
-                                    })
+                                    gameoverref.current.openModal(7, "won")
+                                    // logout()
+                                    //     .then(() => {
+                                    //         console.log("logout success")
+                                    //         Updates.reloadAsync()
+                                    //     })
+                                    //     .catch((err) => {
+                                    //         console.error(err)
+                                    //     })
                                     
                                     // testRef.current.openModal("Test", "haha testing this", "cool")
                                     // console.log(testRef)

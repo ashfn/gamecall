@@ -5,6 +5,8 @@ import { prefix } from "./config"
 import { router } from 'expo-router'
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useFriendRequestsStore, useProfileCache } from './friendshipStatus';
+import { useGamesStore } from './games';
 
 export const useAccountDetailsStore = create(
     (set, get) => ({
@@ -43,7 +45,7 @@ export const useAccountDetailsStore = create(
             }
         },
         logout: async () => {
-            set({account: null})
+            set({account: null, lastUpdated: 0})
         }
     })
 )
@@ -142,8 +144,14 @@ export async function signup(username: string, email: string, password: string){
 }
 
 export async function logout(clearRefreshToken:boolean=true){
-    useAccountDetailsStore.getState().logout()
-    
+
+    console.log(`CLEARING CACHED DATA`)
+
+    await useAccountDetailsStore.getState().logout()
+    useProfileCache.getState().clear()
+    useFriendRequestsStore.getState().clear()
+    useGamesStore.getState().clear()
+
     await AsyncStorage.removeItem("accessToken")
     await AsyncStorage.removeItem("refreshToken")
     await AsyncStorage.removeItem("account-details")
@@ -156,6 +164,8 @@ export async function logout(clearRefreshToken:boolean=true){
 export async function refreshAccessToken(){
 
     const refreshToken = await AsyncStorage.getItem("refreshToken")
+
+    console.log(`RTOKEN: ${refreshToken}`)
 
     const response = await fetch(`${prefix}/refresh`, {
         method: "POST",
@@ -174,6 +184,7 @@ export async function refreshAccessToken(){
         await AsyncStorage.setItem("accessToken", json.data)
         return true
     }else{
+        console.log(`Error /refresh: ${JSON.stringify(json)}`)
         throw new Error(json.message)
     }
 
@@ -208,7 +219,8 @@ export async function authFetch(url:string, options:any){
             return await authFetch(url, options)
         } catch(err) {
             // console.log("Encountered error refreshing token")
-            throw new Error("Refresh token invalid, could not refresh access token")
+            console.log(err.toString())
+            throw new Error("Refresh token invalid due to err, could not refresh access token")
         }
 
 

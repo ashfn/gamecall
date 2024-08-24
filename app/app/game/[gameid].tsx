@@ -29,19 +29,23 @@ export default function Route() {
 
     const [opponent, setOpponent] = useState(null)
 
+    const [preventLeave, setPreventLeave] = useState(false)
+
+    const [loading, setLoading] = useState(false)
+
     useEffect(() => {
-        if(game!=null){
+        if(game!=null && account!=null){
             if(game.player1==account.id){
-                getProfile(game.player2.id).then((profile) => {
+                getProfile(game.player2).then((profile) => {
                     setOpponent(profile)
                 })
             }else{
-                getProfile(game.player1.id).then((profile) => {
+                getProfile(game.player1).then((profile) => {
                     setOpponent(profile)
                 })
             }    
         }
-    }, [game])
+    }, [game, account])
 
     useEffect(() => {
         let mounted = true;
@@ -53,18 +57,23 @@ export default function Route() {
     }, [])
     
     UNSTABLE_usePreventRemove(true, ({ data }) => {
-        Alert.alert(
-            'Discard changes?',
-            'You have unsaved changes. Discard them and leave the screen?',
-            [
-              { text: "Don't leave", style: 'cancel', onPress: () => {} },
-              {
-                text: 'Discard',
-                style: 'destructive',
-                onPress: () => navigation.dispatch(data.action),
-              },
-            ]
-          );
+        if(preventLeave){
+            Alert.alert(
+                'Delete move',
+                'Are you sure you want to cancel your move?',
+                [
+                  { text: "Cancel", style: 'cancel', onPress: () => {} },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => navigation.dispatch(data.action),
+                  },
+                ]
+              );
+        }else{
+            navigation.dispatch(data.action)
+        }
+
     })
 
     const endGame = Gesture.Tap()
@@ -75,7 +84,7 @@ export default function Route() {
                 'End game',
                 'Are you sure you want to end the game?',
                 [
-                  { text: "Continue", style: 'cancel', onPress: () => {} },
+                  { text: "Cancel", style: 'cancel', onPress: () => {} },
                   {
                     text: 'End',
                     style: 'destructive',
@@ -96,17 +105,22 @@ export default function Route() {
             <SafeAreaView>
                 <View className="p-2 h-full">
                     <View className="flex flex-row mb-4">
-                        <Pressable className="basis-1/3 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
-                        <View className="basis-1/3 ">
+                        <Pressable className="basis-1/6 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
+                        <View className="basis-4/6 ">
                             {opponent!=null &&
                                 <View className="flex flex-row items-center self-center">
                                     <Image key={opponent.id} className="rounded-full align-middle" height={25} width={25} source={`${prefix}/profile/${opponent.id}/avatar`} cachePolicy={"disk"}  />                            
                                     <Text className="ml-1 text-[#ffffff] text-lg ">{opponent.displayName}</Text>
                                 </View>                                    
                             }
+                            {opponent==null &&
+                                <View className="flex flex-row items-center self-center">
+                                    <Text className="ml-1 text-[#ffffff] text-lg ">its null :(</Text>
+                                </View>      
+                            }
                         </View>
 
-                        <View className="basis-1/3 self-end">
+                        <View className="basis-1/6 self-end">
                             <GestureDetector gesture={endGame}>
                                 <View className="w-[35px] h-[35px] bg-bg2 rounded-md self-end mr-[10%] flex items-center justify-center">
                                     <AntDesign name="close" size={20} color="red" />
@@ -116,7 +130,7 @@ export default function Route() {
                     </View>
                     <Text className="text-minty-3">
                         {game!=null &&
-                            <GameLoader gameData={game} account={account} />
+                            <GameLoader gameData={game} account={account} setPreventLeave={setPreventLeave} setLoading={setLoading} />
                         }
                     </Text>
                 </View>

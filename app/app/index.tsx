@@ -18,6 +18,10 @@ import { timeAgo } from '../util/time';
 
 SplashScreen.preventAutoHideAsync();
 
+import { LogBox } from 'react-native';
+LogBox.ignoreLogs(['Warning: ...']); // Ignore log notification by message
+LogBox.ignoreAllLogs()
+
 function FriendView(props){
 
     const [enabled, setEnabled] = useState(true);
@@ -45,6 +49,7 @@ function FriendView(props){
     const [isPressed, setIsPressed] = useState(false);
 
     const getGame = useGamesStore((state) => state.getGameByUser)
+
     const game = getGame(props.myid, props.user.id)
 
 
@@ -161,6 +166,7 @@ export default function Page() {
                                 console.log(`Profile prefetch ${id} error: ${err}`)
                             })
                             .then((response) => {
+                                console.log(`Prefetch ${id} res ${JSON.stringify(response)}`)
                                 setFriendProfiles([...friendProfiles, response])
                             })
                     }, index * 10)
@@ -168,7 +174,8 @@ export default function Page() {
             }
         }
 
-    }, [friends, requestsSent, requestsReceived])
+
+    }, [friends, requestsSent, requestsReceived, games])
 
     const onReloadGames = useCallback(() => {
         setLoadingGames(true);
@@ -177,6 +184,8 @@ export default function Page() {
             forceReloadGames()
         ]).then(() => {
             setLoadingGames(false);
+        }).catch((err) => {
+            console.log(err)
         })
       }, []);
 
@@ -200,7 +209,7 @@ export default function Page() {
                 setAppIsReady(true)
                 // Optionally handle the error
             });
-    }, [freshConnections, updateAccount, updateRequests]);
+    }, [freshConnections, updateAccount, updateRequests, account==null]);
 
 
     const link = " text-2xl text-minty-4 text-center basis-1/2"

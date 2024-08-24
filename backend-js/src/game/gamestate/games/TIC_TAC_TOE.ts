@@ -68,7 +68,8 @@ export const TIC_TAC_TOE: GameStateManipulator = {
         if(state.board[row][box]!=0){
             return {
                 status: GameMoveStatus.INVALID,
-                state: state
+                state: state,
+                game: null
             }
         }
 
@@ -80,55 +81,54 @@ export const TIC_TAC_TOE: GameStateManipulator = {
         const winner = checkWinner(newState.board)
 
         if(winner==0){
-            updateGame(gameId, newState, getOtherUser(newState, userId), 0)
-                .then(() => {
-                    return {
-                        status: GameMoveStatus.ACCEPTED,
-                        state: newState
-                    }
-                })
-                .catch((err) => {
-                    console.error(err)
-                    return {
-                        status: GameMoveStatus.INVALID,
-                        state: state
-                    }
-                })
+            try{
+                const result = await updateGame(gameId, newState, getOtherUser(newState, userId), 0)
+                return {
+                    status: GameMoveStatus.ACCEPTED,
+                    state: newState,
+                    game: result
+                }
+            } catch(err) {
+                console.error(err)
+                return {
+                    status: GameMoveStatus.INVALID,
+                    state: state,
+                    game: null
+                }
+            }
         }else if(winner==-1){
-            updateGame(gameId, newState, getOtherUser(newState, userId), -1)
-                .then(() => {
-                    return {
-                        status: GameMoveStatus.ENDED,
-                        state: newState
-                    }
-                })
-                .catch((err) => {
-                    console.error(err)
-                    return {
-                        status: GameMoveStatus.INVALID,
-                        state: state
-                    }
-                })
+            try{
+                const result = await updateGame(gameId, newState, getOtherUser(newState, userId), -1)
+                return {
+                    status: GameMoveStatus.ENDED,
+                    state: newState,
+                    game: result
+                }
+            } catch(err) {
+                console.error(err)
+                return {
+                    status: GameMoveStatus.INVALID,
+                    state: state,
+                    game: null
+                }
+            }
         }else{
-            updateGame(gameId, newState, getOtherUser(newState, userId), winner)
-                .then(() => {
-                    return {
-                        status: GameMoveStatus.ENDED,
-                        state: newState
-                    }
-                })
-                .catch((err) => {
-                    console.error(err)
-                    return {
-                        status: GameMoveStatus.INVALID,
-                        state: state
-                    }
-                })
+            try{
+                const result = await updateGame(gameId, newState, getOtherUser(newState, userId), winner)
+                return {
+                    status: GameMoveStatus.ENDED,
+                    state: newState,
+                    game: result
+                }
+            } catch(err) {
+                console.error(err)
+                return {
+                    status: GameMoveStatus.INVALID,
+                    state: state,
+                    game: null
+                }
+            }
         }
 
-        return {
-            status: GameMoveStatus.INVALID,
-            state: state
-        }
     },
 }

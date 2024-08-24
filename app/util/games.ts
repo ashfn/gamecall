@@ -65,6 +65,16 @@ export const useGamesStore = create(
                 }
             }
         },
+        manuallyUpdate: (gameId: number, game: any) => {
+            let games = get().games
+            for(let i=0;i<games.length;i++){
+                if(games[i].id==gameId){
+                    games[i]=game
+                }
+            }
+            set({games: games})
+            console.log(`NEWGAMES ${JSON.stringify(get().games)}`)
+        },
         forceUpdate: async () => {
             const res = await authFetch(`${prefix}/games`, {
 
@@ -72,6 +82,7 @@ export const useGamesStore = create(
             const res2 = await res.json()
             if(res2.status==1){
                 const games = res2.data
+                console.log(`got games ${JSON.stringify(games)}`)
                 set({
                     games: games
                 })

@@ -44,7 +44,6 @@ export default function Page() {
                     break
                 }
                 case 1: {
-
                     refresh()
                         .then(() => setTimeout(() => {}, 100))
                         .then(() => router.navigate("."))

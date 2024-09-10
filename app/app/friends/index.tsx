@@ -129,7 +129,7 @@ function SearchResult(props){
     return (
         <GestureDetector gesture={openProfile}>
 
-            <View className="rounded-lg mb-2 bg-pastel-2">
+            <View className="rounded-lg mb-2">
                 <View className="flex flex-row">
                     <View className="self-center">
                         <Image className="rounded-full bg-minty-3" height={60} width={60} source={`${prefix}/profile/${props.user.id}/avatar`} cachePolicy="disk" />
@@ -146,28 +146,28 @@ function SearchResult(props){
                         {status==4 &&
                             <GestureDetector gesture={addButton}>
                                 <View className="w-full rounded-md bg-minty-4 justify-center flex flex-row ">
-                                    <Text className="m-auto text-center text-bg text-l">Add</Text>
+                                    <Text className="m-auto text-center text-bg text-l px-2 py-2">Add</Text>
                                     <ActivityIndicator className="absolute top-[25%] right-[15%] " size="small" color="#0a0a0a" animating={working}/>   
                                 </View>
                             </GestureDetector>
                         }
                         {status==1 &&
-                            <Pressable className="w-full rounded-md bg-zinc-800 h-[60%] justify-center">
-                                <Text className="text-center text-bg text-l">Requested</Text>
+                            <Pressable className="w-full rounded-md bg-zinc-800 justify-center">
+                                <Text className="text-center text-bg text-l px-2 py-2">Requested</Text>
                             </Pressable>
                         }
                         {status==2 &&
                             <GestureDetector gesture={acceptButton}>
-                                <View className="w-full rounded-md bg-minty-4 h-[60%] justify-center flex flex-row ">
-                                    <Text className="m-auto text-center text-bg text-l">Accept</Text>
+                                <View className="w-full rounded-md bg-minty-4 justify-center flex flex-row ">
+                                    <Text className="m-auto text-center text-bg text-l px-2 py-2">Accept</Text>
                                     <ActivityIndicator className="absolute top-[25%] right-[5%] " size="small" color="#0a0a0a" animating={working}/>   
                                 </View>
                             </GestureDetector>
                         }
                         {status==3 &&
                             <GestureDetector gesture={removeButton}>
-                                <View className="w-full rounded-md bg-red-500 h-[60%] justify-center flex flex-row ">
-                                    <Text className="m-auto text-center text-bg text-l">Remove</Text>
+                                <View className="w-full rounded-md bg-red-500 justify-center flex flex-row ">
+                                    <Text className="m-auto text-center text-bg text-l px-2 py-2">Remove</Text>
                                     <ActivityIndicator className="absolute top-[25%] right-[5%] " size="small" color="#0a0a0a" animating={working}/>   
                                 </View>
                             </GestureDetector>

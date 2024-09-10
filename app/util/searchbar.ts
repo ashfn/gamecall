@@ -3,6 +3,46 @@ import { authFetch } from "./auth";
 import { prefix } from "./config";
 import { resetWarningCache } from "prop-types";
 
+export const useSpotifySearchStore = create(
+    (set, get) => ({
+        results: [],
+        lastEdited: new Date().getTime(),
+        waiting: false,
+        searchQuery: null,
+        searchType: "ARTIST",
+        setSearch: (searchQuery: string) => {
+            set({searchQuery: searchQuery, lastEdited: new Date().getTime(), waiting: true})
+            setTimeout(() => {
+                const data = get()
+                if (new Date().getTime()-data.lastEdited>800 && data.searchQuery!=null){
+                    if(data.searchQuery!=""){
+                        searchSpotify(data.searchQuery, data.searchType).then((res) => {
+                            set({results: res, waiting: false})
+                        })
+                    }else{
+                        set({waiting: false})
+                    }
+
+                }
+            }, 800)
+        },
+        setSearchType: (searchType: string) => {
+            const data = get()
+            console.log(`setting search type ${searchType}`)
+            set({
+                searchType: searchType
+            })
+            if(data.searchQuery!=null && data.searchQuery!=""){
+                data.setSearch(data.searchQuery)
+            }
+            
+        },
+        clearSearch: () => {
+
+        }
+    })
+)
+
 export const useFriendSearchStore = create(
     (set, get) => ({
         results: [],
@@ -14,7 +54,7 @@ export const useFriendSearchStore = create(
             setTimeout(() => {
                 const data = get()
                 if (new Date().getTime()-data.lastEdited>800 && data.query!=null && data.query!=""){
-                        search(data.query).then((res) => {
+                    searchUsers(data.query).then((res) => {
                         console.log(res)
                         set({results: res, waiting: false})
                     })
@@ -23,15 +63,21 @@ export const useFriendSearchStore = create(
         },
         clearSearch: () => {
             set({
-                query: null,
+                // query: null,
                 waiting: false,
-                results: []
+                // results: []
             })
         }
     })
 )
 
-async function search(query){
+async function searchSpotify(query: string, type: string){
+    const result = await authFetch(`${prefix}/spotify/${type.toLowerCase()}?${type.toLocaleLowerCase()}=${query}`, {})
+    const resJson = await result.json()
+    return resJson
+}
+
+async function searchUsers(query){
     console.log(`Searching \"${query}\"`)
     const res = await authFetch(`${prefix}/searchProfiles`, {
         method: "POST",

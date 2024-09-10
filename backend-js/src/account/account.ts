@@ -17,7 +17,7 @@ function createJwt(user: User){
     return jwt.sign({
         "id":user.id,
         "role":user.role
-    }, secret, {expiresIn: '1m'})
+    }, secret, {expiresIn: '30m'})
 }
 
 async function updateRefresh(account: User): Promise<string>{

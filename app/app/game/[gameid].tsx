@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { View } from "moti";
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, RefreshControl, Alert } from "react-native";
+import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, RefreshControl, Alert, TextInput } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authFetch, useAccountDetailsStore } from "../../util/auth";
 import { prefix } from "../../util/config";
 import { Image } from "expo-image";
@@ -13,6 +13,9 @@ import { UNSTABLE_usePreventRemove } from "@react-navigation/native";
 import { HoldItem } from "react-native-hold-menu";
 import AntDesign from '@expo/vector-icons/AntDesign';
 import GameLoader from "../../src/games/GameLoader";
+import { GameOver } from "../../src/components/GameOver";
+
+
 export default function Route() {
     
     const navigation = useNavigation()
@@ -32,6 +35,8 @@ export default function Route() {
     const [preventLeave, setPreventLeave] = useState(false)
 
     const [loading, setLoading] = useState(false)
+
+    const gameOverRef = useRef(null)
 
     useEffect(() => {
         if(game!=null && account!=null){
@@ -103,8 +108,12 @@ export default function Route() {
     return (
         <View className="bg-bg h-full">
             <SafeAreaView>
+                <GameOver ref={gameOverRef} />
+
                 <View className="p-2 h-full">
+
                     <View className="flex flex-row mb-4">
+                        
                         <Pressable className="basis-1/6 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
                         <View className="basis-4/6 ">
                             {opponent!=null &&
@@ -128,11 +137,13 @@ export default function Route() {
                             </GestureDetector>
                         </View>
                     </View>
-                    <Text className="text-minty-3">
+                    <View className="text-minty-3">
+
                         {game!=null &&
-                            <GameLoader gameData={game} account={account} setPreventLeave={setPreventLeave} setLoading={setLoading} />
+
+                            <GameLoader gameData={game} account={account} setPreventLeave={setPreventLeave} setLoading={setLoading} gameOverRef={gameOverRef} />
                         }
-                    </Text>
+                    </View>
                 </View>
             </SafeAreaView>
         </View>

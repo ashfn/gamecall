@@ -68,7 +68,6 @@ export default function Route() {
         setWorking(true);
         forceRefresh(userId).then(() => {
             getProfile(userId).then((data) => {
-                console.log(data)
                 setUserData(data)
                 setWorking(false);
             })

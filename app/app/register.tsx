@@ -81,7 +81,7 @@ export default function Page() {
                         </View>
                         <View className="ml-8 mr-8  border-solid border-minty-4 border-[1px] rounded-lg p-2 text-minty-4 mb-8">
                             <Text className="text-l text-minty-4 text-center absolute top-[-14] left-[10%] bg-bg p-1">Email</Text>
-                            <TextInput ref={emailRef} onChangeText={(v)=> setEmail(v)} className="text-2xl text-minty-4" keyboardAppearance="dark" selectionColor="#96e396" onSubmitEditing={()=> passwordRef.current.focus()} autocomplete="email" enterKeyHint="next" />
+                            <TextInput ref={emailRef} onChangeText={(v)=> setEmail(v)} className="text-2xl text-minty-4" keyboardAppearance="dark" selectionColor="#96e396" onSubmitEditing={()=> passwordRef.current.focus()} autocomplete="email" enterKeyHint="next" autoCapitalize='none' />
                         </View>
                         <View className="ml-8 mr-8 border-solid border-minty-4 border-[1px] rounded-lg p-2 text-minty-4 mb-8">
                             <Text className="text-l text-minty-4 text-center absolute top-[-14] left-[10%] bg-bg p-1">Password</Text>

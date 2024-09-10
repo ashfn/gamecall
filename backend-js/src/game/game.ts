@@ -28,8 +28,6 @@ export async function getAllActiveGames(userId: number){
         }
     })
 
-    console.log(`found games ${JSON.stringify(games)}`)
-
     return games
 }
 

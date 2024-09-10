@@ -68,6 +68,7 @@ model Friendship {
 
 enum GameType {
   TIC_TAC_TOE
+  SPOTIFY
 }
 
 enum GameStatus {
@@ -75,6 +76,13 @@ enum GameStatus {
   CANCELLED
   ENDED
   ENDED_UNOPENED
+}
+
+model SpotifyToken {
+  id String @id
+  accessToken String
+  refreshToken String
+  expires BigInt
 }
 
 model Game {

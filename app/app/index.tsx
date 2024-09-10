@@ -1,7 +1,7 @@
-import { ActivityIndicator, RefreshControl, View, FlatList, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, RefreshControl, View, FlatList, TouchableOpacity, Dimensions } from 'react-native';
 import { Link, router} from "expo-router"
 import { Pressable, Text, SafeAreaView } from 'react-native';
-import { logout, useAccountDetailsStore } from '../util/auth';
+import { authFetch, logout, useAccountDetailsStore } from '../util/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 import { Image } from 'expo-image';
@@ -19,6 +19,8 @@ import { timeAgo } from '../util/time';
 SplashScreen.preventAutoHideAsync();
 
 import { LogBox } from 'react-native';
+import { GameOver } from '../src/components/GameOver';
+import { SpotifyGamePicker } from '../src/components/SpotifyGamePicker';
 LogBox.ignoreLogs(['Warning: ...']); // Ignore log notification by message
 LogBox.ignoreAllLogs()
 
@@ -49,9 +51,28 @@ function FriendView(props){
     const [isPressed, setIsPressed] = useState(false);
 
     const getGame = useGamesStore((state) => state.getGameByUser)
+    const removeGame = useGamesStore((state) => state.removeGameById)
 
     const game = getGame(props.myid, props.user.id)
 
+    
+
+    async function finishGame(){
+        console.log("Finishing game...")
+        const res = await authFetch(`${prefix}/finishGame`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              "gameId": game.id
+            })
+          })
+        const json = await res.json()
+        if(json.status==1){
+            props.reloadGames()
+        }
+    }
 
     const open = Gesture.Tap()
         .runOnJS(true)
@@ -65,7 +86,19 @@ function FriendView(props){
 
             // if there is a game - open the game
             if(game!=null){
-                router.push(`/game/${game.id}`)
+                if(game.status=="ENDED_UNOPENED"){
+                    if(game.winner==props.myid){
+                        props.gameOverRef.current.openModal(props.myid, "won", () => {finishGame()})
+                    }else if(game.winner==-1){
+                        props.gameOverRef.current.openModal(props.myid, "drawn", () => {finishGame()})
+                    }else{
+                        props.gameOverRef.current.openModal(props.myid, "lost", () => {finishGame()})
+                    }
+                }else{
+                    if(game.waitingOn==props.myid){
+                        router.push(`/game/${game.id}`)
+                    }
+                }
             }
 
             // setEnabled(false)
@@ -75,8 +108,6 @@ function FriendView(props){
             // router.push(`/sendgame/${props.user.id}`)
 
         })
-
-    console.log(`game: ${JSON.stringify(game)}`)
 
     return (
         <TouchableOpacity
@@ -147,12 +178,17 @@ export default function Page() {
 
     const games = useGamesStore((state) => state.games)
 
+    const gameOverRef = useRef(null)
+
     const getGames = useGamesStore((state) => state.get)
     const forceReloadGames = useGamesStore((state) => state.forceUpdate)
 
     setStatusBarStyle("light", true)
 
     const [friendProfiles, setFriendProfiles] = useState([])
+    const getProfile = useProfileCache((state) => state.getProfile)
+
+    const screenHeight = Dimensions.get('window').height;
 
     useEffect(() => {
         if(friends!=null && requestsSent!=null && requestsReceived!=null){
@@ -167,10 +203,18 @@ export default function Page() {
                             })
                             .then((response) => {
                                 console.log(`Prefetch ${id} res ${JSON.stringify(response)}`)
-                                setFriendProfiles([...friendProfiles, response])
                             })
                     }, index * 10)
                 })
+
+                let tempFriendProfiles = []
+                friends.forEach((id, index) => {
+                    getProfile(id).then((profile) => {
+                        tempFriendProfiles.push(profile)
+                    })
+                })
+                setFriendProfiles(tempFriendProfiles)
+                
             }
         }
 
@@ -228,8 +272,12 @@ export default function Page() {
     return(
 
         <View className="bg-bg h-full" onLayout={onLayoutRootView}>
+            <GameOver ref={gameOverRef} />
             <SafeAreaView>
-                <GamePicker ref={gamePickerRef} />
+                
+                {/* <GamePicker ref={gamePickerRef} /> */}
+                <SpotifyGamePicker ref={gamePickerRef} />
+
                 <View className="">
                     {(lastUpdated==0) &&
                         <>
@@ -278,16 +326,16 @@ export default function Page() {
                                             {/* <Text className="text-2xl text-minty-3">{JSON.stringify(Array.from({ length: 1 }, () => [...friendProfiles]).flat())}</Text> */}
                                             <View className="">
                                                 {friendProfiles.map((x, i) =>
-                                                    <FriendView key={i} user={x} myid={account.id} gamepicker={gamePickerRef} />
+                                                    <FriendView key={i} user={x} myid={account.id} gamepicker={gamePickerRef} gameOverRef={gameOverRef} reloadGames={onReloadGames} />
                                                 )}
+                                                {(76*friendProfiles.length<screenHeight-105) &&
+                                                    <View style={{
+                                                        height: (screenHeight-275)-(76*friendProfiles.length)
+                                                    }}>
+    
+                                                    </View> 
+                                                }
 
-                                                { Array(8-friendProfiles.length).fill({ key: `placeholder-${Math.random()}` }).map((x, i) => 
-                                                    <View className="h-[72px]" key={i}>
-                                                        {/* {i==0 &&
-                                                            <Text className="text-[#ffffff] text-sm">As you add more friends they will show up here</Text>
-                                                        } */}
-                                                    </View>
-                                                )}
                                                 
                                             </View>
                                         </View>

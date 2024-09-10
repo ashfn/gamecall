@@ -1,5 +1,5 @@
 import React, { Suspense, useState, useEffect, forwardRef, useRef, useImperativeHandle } from 'react';
-import { View, Text, Button, ActivityIndicator } from 'react-native';
+import { View, Text, Button, ActivityIndicator, TextInput } from 'react-native';
 import { gamesConfig } from '../../util/games';
 import { useProfileCache } from '../../util/friendshipStatus';
 import { authFetch } from '../../util/auth';
@@ -11,6 +11,7 @@ const GameLoader = forwardRef((props, ref) => {
     const account = props.account
     const setPreventLeave = props.setPreventLeave
     const setLoading = props.setLoading
+    const gameOverRef = props.gameOverRef
 
     const getProfile = useProfileCache((state) => state.getProfile)
 
@@ -75,6 +76,7 @@ const GameLoader = forwardRef((props, ref) => {
     return (
         <>
             {ready &&
+
                 <GameComponent
                     player1={player1}
                     player2={player2}
@@ -83,6 +85,7 @@ const GameLoader = forwardRef((props, ref) => {
                     account={account}
                     setPreventLeave={setPreventLeave}
                     setLoading={setLoading}
+                    gameOverRef={gameOverRef}
                 />
             }
             {!ready && 

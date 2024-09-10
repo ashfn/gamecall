@@ -19,7 +19,9 @@ module.exports = {
         "bg":"#0a0a0a",
         "bg2": "#1c1b1b",
         "bg3": "#2b2a2a",
-        "bg4": "#0f0f0f"
+        "bg4": "#0f0f0f",
+        "winner-gold":"#e0b546",
+        "loser-red":"#cf554c"
       },
     },
     fontFamily: {

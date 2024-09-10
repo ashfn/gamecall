@@ -21,13 +21,14 @@ export async function sendGameRoute(req: Request, res: Response){
 
     const target = parseInt(req.body.user, 10)
 
+    const options = req.body.options
+
     if(Number.isNaN(Number(req.body.user)) || Number.isNaN(target)){
         return res.send(JSON.stringify(clientError("Invalid userId")))
     }
 
     const gameName = req.body.game
 
-    
     // check theyre friends
     const friends = await getFriends(user.id)
     let friendship:Friendship|null = null
@@ -87,43 +88,47 @@ export async function sendGameRoute(req: Request, res: Response){
         return res.send(JSON.stringify(clientError("Unknown game requested")))
     }
 
-    const gameState = game.init(user.id, target)
+    try{
+        const gameState = await game.init(user.id, target, options)
 
-    // create the game in the database
-    const gameRow: Game = await prisma.game.create({
-        data: {
-            player1: user.id,
-            player2: target,
-            winner: 0,
-            status: GameStatus.STARTED,
-            type: gameType,
-            waitingOn: target,
-            gameStateJson: JSON.stringify(gameState)
-        }
-    })
+        // create the game in the database
+        const gameRow: Game = await prisma.game.create({
+            data: {
+                player1: user.id,
+                player2: target,
+                winner: 0,
+                status: GameStatus.STARTED,
+                type: gameType,
+                waitingOn: target,
+                gameStateJson: JSON.stringify(gameState)
+            }
+        })
+        
+        await prisma.friendship.updateMany({
+            where: {
+                OR: [
+                    {
+                        user1: user.id,
+                        user2: target
+                    },
+                    {
+                        user1: target,
+                        user2: user.id
+                    }
+                ]
     
-    await prisma.friendship.updateMany({
-        where: {
-            OR: [
-                {
-                    user1: user.id,
-                    user2: target
-                },
-                {
-                    user1: target,
-                    user2: user.id
-                }
-            ]
-
-        },
-        data: {
-            currentGameId: gameRow.id
-        }
-    })
-
-    // DISPATCH NOTIFICATION
-
-    return res.send(JSON.stringify(success(gameRow)))
+            },
+            data: {
+                currentGameId: gameRow.id
+            }
+        })
+    
+        // DISPATCH NOTIFICATION
+    
+        return res.send(JSON.stringify(success(gameRow)))
+    }catch(err) {
+        return res.send(JSON.stringify(clientError(err as string)))
+    }
 }
 
 // POST /endGame
@@ -182,6 +187,52 @@ export async function endGameRoute(req: Request, res: Response){
     // DISPATCH NOTIFICATION
 
     return res.send(JSON.stringify(success()))
+}
+
+// POST /finishGame
+// this is run to change the game from ended_unopened to ended
+export async function finishGameRoute(req: Request, res: Response){
+
+    console.log(`updateGame: ${JSON.stringify(req.body)}`)
+
+    const user: User = res.locals.user
+
+    const gameId = parseInt(req.body.gameId, 10)
+
+    console.log(`gameId ${gameId}`)
+
+    const game = await prisma.game.findFirst({
+        where: {
+            id: gameId
+        }
+    })
+    
+    console.log(`Found game: ${JSON.stringify(game)}`)
+
+    if(game==null){
+        return res.send(JSON.stringify(clientError("Invalid game id")))
+    }
+
+    if(!(game.player1==user.id || game.player2==user.id)){
+        return res.send(JSON.stringify(clientError("You are not a player in this game")))
+    }
+
+    if(game.status!=GameStatus.ENDED_UNOPENED){
+        return res.send(JSON.stringify(clientError("This game is not ready to gracefully finish")))
+    }
+
+    if(game.waitingOn!=user.id){
+        return res.send(JSON.stringify(clientError("It is not your turn of the game")))
+    }
+
+    await prisma.game.update({
+        where: {
+            id: gameId
+        },
+        data: {
+            status: GameStatus.ENDED
+        }
+    })
 }
 
 // POST /updateGame

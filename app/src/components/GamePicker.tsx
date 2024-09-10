@@ -145,7 +145,6 @@ export const GamePicker = forwardRef((props, ref) => {
                 addGame(json.data)
               }
               setWorking(false)
-              console.log(`Game send response: ${JSON.stringify(json)}`)
             })
             .catch((err) => {
               setWorking(false)

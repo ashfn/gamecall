@@ -41,8 +41,9 @@ function checkWinner(board: number[][]) {
 }
 
 export const TIC_TAC_TOE: GameStateManipulator = {
-    init(user1, user2) {
+    async init(user1, user2, options) {
 
+        
         const board = [[0,0,0],[0,0,0],[0,0,0]]
 
         const state: TTT_GameState = {

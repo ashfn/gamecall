@@ -1,7 +1,7 @@
 import { Modal, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { Link, router, Stack, useFocusEffect, useRouter } from "expo-router"
 import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { authFetch, getAccountDetails, logout, useAccountDetailsStore } from '../util/auth';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { FontAwesome6 } from '@expo/vector-icons';
@@ -17,10 +17,33 @@ import tailwindConfig from '../tailwind.config';
 import { BlurView } from 'expo-blur';
 import { InputModal } from '../src/components/InputModal';
 import { InfoModal } from '../src/components/TextModal';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 
+import * as FileSystem from 'expo-file-system'
 
 import * as Updates from 'expo-updates'
 import { GameOver } from '../src/components/GameOver';
+
+function getFolderPath(filePath) {
+    // Ensure the path is a string
+    if (typeof filePath !== 'string') {
+        throw new TypeError('The path should be a string.');
+    }
+
+    // Normalize path to handle different OS path separators
+    const normalizedPath = filePath.replace(/\\/g, '/');
+
+    // Find the last occurrence of '/' in the path
+    const lastSlashIndex = normalizedPath.lastIndexOf('/');
+
+    // If there is no '/' in the path, return an empty string (indicating it's a root path or a file without folders)
+    if (lastSlashIndex === -1) {
+        return '';
+    }
+
+    // Extract the folder path
+    return normalizedPath.substring(0, lastSlashIndex);
+}
 
 export default function Page() {
 
@@ -74,7 +97,8 @@ export default function Page() {
             allowsEditing:true,
             aspect:[1,1],
             quality:0.5,
-            base64: true
+            base64: true,
+            exif: false
         
         })
         if(!result.canceled){
@@ -95,6 +119,18 @@ export default function Page() {
             })
         }
     }
+
+    useEffect(() => {
+        if(account!=null){
+            Image.getCachePathAsync(`${prefix}/profile/${account.id}/avatar`).then((rpath) => {
+                FileSystem.getInfoAsync(getFolderPath(rpath)).then((x) => {
+                    console.log(x)
+                })
+
+                // console.log()
+            })
+        }
+    }, [account])
 
     return(
         <View className="bg-bg h-full">
@@ -126,20 +162,20 @@ export default function Page() {
                                     <Pressable onPressIn={() => displaynameModalRef.current.openModal()}>
                                         <View className="flex flex-row mt-2 p-2 rounded-lg bg-bg2 items-center">
                                             <Text className="text-[#ffffff] pastel-2 text-2xl mr-2">{account.displayName}</Text>
-                                            <FontAwesome6 name="edit" size={24} color={"#ffffff"} />
+                                            <FontAwesome name="pencil" size={18} color="#ffffff" />
                                         </View>
                                     </Pressable>
                                 </View>
                                 <Pressable className="mt-10" onPressIn={() => {
-                                    gameoverref.current.openModal(7, "won")
-                                    // logout()
-                                    //     .then(() => {
-                                    //         console.log("logout success")
-                                    //         Updates.reloadAsync()
-                                    //     })
-                                    //     .catch((err) => {
-                                    //         console.error(err)
-                                    //     })
+                                    // gameoverref.current.openModal(7, "won")
+                                    logout()
+                                        .then(() => {
+                                            console.log("logout success")
+                                            Updates.reloadAsync()
+                                        })
+                                        .catch((err) => {
+                                            console.error(err)
+                                        })
                                     
                                     // testRef.current.openModal("Test", "haha testing this", "cool")
                                     // console.log(testRef)

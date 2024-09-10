@@ -19,33 +19,7 @@ import { MotiPressable } from "moti/interactions";
 
 import { Gesture, GestureDetector } from "react-native-gesture-handler"
 
-const forSlideFromLeft = ({ current, next, layouts: { screen } }: slideProps) => {
-    const progress = Animated.add(
-      current.progress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-      next
-        ? next.progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 1],
-            extrapolate: 'clamp',
-          })
-        : 0
-    );
-  
-    const translateX = progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [-screen.width, 0],
-    });
-  
-    return {
-      cardStyle: {
-        transform: [{ translateX }],
-      },
-    };
-  };
+
 
 function openUserProfile(userId){
     router.push(`/user/${userId}`)
@@ -155,9 +129,9 @@ function SearchResult(props){
     return (
         <GestureDetector gesture={openProfile}>
 
-            <View className="rounded-lg mb-2">
+            <View className="rounded-lg mb-2 bg-pastel-2">
                 <View className="flex flex-row">
-                    <View className="basis-1/6 self-center">
+                    <View className="self-center">
                         <Image className="rounded-full bg-minty-3" height={60} width={60} source={`${prefix}/profile/${props.user.id}/avatar`} cachePolicy="disk" />
                     </View>
                     <View className="basis-3/6">
@@ -171,7 +145,7 @@ function SearchResult(props){
                     
                         {status==4 &&
                             <GestureDetector gesture={addButton}>
-                                <View className="w-full rounded-md bg-minty-4 h-[60%] justify-center flex flex-row ">
+                                <View className="w-full rounded-md bg-minty-4 justify-center flex flex-row ">
                                     <Text className="m-auto text-center text-bg text-l">Add</Text>
                                     <ActivityIndicator className="absolute top-[25%] right-[15%] " size="small" color="#0a0a0a" animating={working}/>   
                                 </View>

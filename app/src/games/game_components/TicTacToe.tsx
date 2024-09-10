@@ -72,6 +72,7 @@ const TicTacToe = forwardRef((props, ref) => {
     const account = props.account
     const setPreventLeave = props.setPreventLeave
     const setLoading = props.setLoading
+    const gameOverRef = props.gameOverRef
     const [sending, setSending] = useState(false)
 
     const screenWidth = Dimensions.get('window').width;
@@ -103,12 +104,21 @@ const TicTacToe = forwardRef((props, ref) => {
                 sendMove([[potentialMove.y, potentialMove.x]]).then((res) => {
                     console.log(JSON.stringify(res))
                     if(res.status==1){
-                        // manualUpdate(res.data.game.id, res.data.game)
-                        setGame(res.data.game)
+                        const newGame = res.data.game
+                        manualUpdate(newGame.id, newGame)
+                        setGame(newGame)
                         setPotentialMove(null)
-                        update().then(() => {
-                            router.back()
-                        })
+                        if(newGame.winner==account.id){
+                            gameOverRef.current.openModal(account.id, "won", () => {router.back()})
+                        }else if(newGame.winner==-1){
+                            gameOverRef.current.openModal(account.id, "drawn", () => {router.back()})
+                        }else if(newGame.winner==0){
+                            update().then(() => {
+                                router.back()
+                            })
+                        }else{
+                            gameOverRef.current.openModal(account.id, "lost", () => {router.back()})
+                        }
                     }
                     setLoading(false)
                 })

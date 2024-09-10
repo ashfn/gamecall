@@ -3,7 +3,8 @@ import { authFetch } from "./auth";
 import { prefix } from "./config";
 
 const games = {
-    "TIC_TAC_TOE": "Tic Tac Toe"
+    "TIC_TAC_TOE": "Tic Tac Toe",
+    "SPOTIFY": "Spotify"
 }
 
 export function getGameName(gameId: string){
@@ -46,6 +47,13 @@ export const useGamesStore = create(
             }
 
             return rgame  
+        },
+        removeGameById: (gameId: number) => {
+            const games = get().games
+            if(games!=null){
+                const newList = games.filter(game => game.id !== gameId);
+                set({games: newList})
+            }
         },
         get: async () => {
             const data = get()
@@ -102,5 +110,8 @@ export const useGamesStore = create(
 export const gamesConfig = [
     {
         id: "TIC_TAC_TOE", name: "Tic Tac Toe", component: () => import('../src/games/game_components/TicTacToe')
+    },
+    {
+        id: "SPOTIFY", name: "Spotify", component: () => import('../src/games/game_components/Spotify')
     }
 ]

@@ -1,0 +1,1 @@
+ALTER TABLE "Game" ADD COLUMN "settingsJson" TEXT NOT NULL DEFAULT '{}';

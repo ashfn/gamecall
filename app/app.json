@@ -1,27 +1,34 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "Rainfrog",
+    "slug": "rainfrog",
     "version": "1.0.0",
+    "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "scheme": "gamecallapp",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0A0C0B"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "app.rainfrog",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "CADisableMinimumFrameDurationOnPhone": true
+      }
     },
     "android": {
+      "package": "app.rainfrog",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0A0C0B"
       }
     },
     "backgroundColor": "#000000",
@@ -46,7 +53,30 @@
           ]
         }
       ],
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#96E396",
+          "defaultChannel": "games"
+        }
+      ]
+    ],
+    "extra": {
+      "apiUrl": "https://rainfrog-api-production.up.railway.app",
+      "router": {},
+      "eas": {
+        "projectId": "e5149113-94cb-45b9-89c5-5d4e8979d3b5"
+      }
+    },
+    "owner": "marazionventures",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e5149113-94cb-45b9-89c5-5d4e8979d3b5",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

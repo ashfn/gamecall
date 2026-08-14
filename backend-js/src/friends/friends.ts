@@ -56,6 +56,19 @@ export async function getFriends(userId: number){
     return friends
 }
 
+export async function areUserIdsFriends(userId: number, targetId: number){
+    const friendship = await prisma.friendship.findFirst({
+        where: {
+            OR: [
+                { user1: userId, user2: targetId },
+                { user1: targetId, user2: userId },
+            ],
+        },
+        select: { user1: true },
+    })
+    return friendship !== null
+}
+
 export async function getFriendRequestsReceived(userId: number){
     const requests = await prisma.friendRequest.findMany({
         where: {

@@ -1,0 +1,3 @@
+ALTER TABLE "GameMoveReceipt"
+  ALTER COLUMN "cell" DROP NOT NULL,
+  ADD COLUMN "moveJson" TEXT NOT NULL DEFAULT '{}';

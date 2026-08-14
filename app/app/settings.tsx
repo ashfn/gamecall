@@ -1,211 +1,150 @@
-import { Modal, TextInput, TouchableWithoutFeedback, View } from 'react-native';
-import { Link, router, Stack, useFocusEffect, useRouter } from "expo-router"
-import { Pressable, Text, Button, SafeAreaView } from 'react-native';
-import { useState, useRef, useEffect } from 'react';
-import { authFetch, getAccountDetails, logout, useAccountDetailsStore } from '../util/auth';
-import { FontAwesome5 } from '@expo/vector-icons';
-import { FontAwesome6 } from '@expo/vector-icons';
+import { FontAwesome, FontAwesome5, MaterialIcons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { apiAction } from "../util/api";
+import { logout, useAccountDetailsStore } from "../util/auth";
+import { prefix } from "../util/config";
+import { colors } from "../util/theme";
 
-import { StatusBar } from 'expo-status-bar';
-import { Image } from 'expo-image';
+export default function SettingsScreen() {
+  const account = useAccountDetailsStore((state) => state.account);
+  const refreshAccount = useAccountDetailsStore((state) => state.refresh);
+  const [avatarVersion, setAvatarVersion] = useState(0);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [nameOpen, setNameOpen] = useState(false);
+  const [displayName, setDisplayName] = useState(account?.displayName ?? "");
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-import {Buffer} from "buffer"
-import { prefix } from '../util/config';
-import { MaterialIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import tailwindConfig from '../tailwind.config';
-import { BlurView } from 'expo-blur';
-import { InputModal } from '../src/components/InputModal';
-import { InfoModal } from '../src/components/TextModal';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+  async function signOut() {
+    await logout();
+    router.replace("/");
+  }
 
-import * as FileSystem from 'expo-file-system'
-
-import * as Updates from 'expo-updates'
-import { GameOver } from '../src/components/GameOver';
-
-function getFolderPath(filePath) {
-    // Ensure the path is a string
-    if (typeof filePath !== 'string') {
-        throw new TypeError('The path should be a string.');
+  async function pickImage() {
+    if (!account || working) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.65,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await apiAction(`${prefix}/profile/${account.id}/avatar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: result.assets[0].base64 }),
+      });
+      setAvatarFailed(false);
+      setAvatarVersion((value) => value + 1);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Could not update your photo");
+    } finally {
+      setWorking(false);
     }
+  }
 
-    // Normalize path to handle different OS path separators
-    const normalizedPath = filePath.replace(/\\/g, '/');
-
-    // Find the last occurrence of '/' in the path
-    const lastSlashIndex = normalizedPath.lastIndexOf('/');
-
-    // If there is no '/' in the path, return an empty string (indicating it's a root path or a file without folders)
-    if (lastSlashIndex === -1) {
-        return '';
+  async function saveName() {
+    if (!account || working) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await apiAction(`${prefix}/profile/${account.id}/displayname`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayname: displayName.trim() }),
+      });
+      await refreshAccount();
+      setNameOpen(false);
+    } catch (nameError) {
+      setError(nameError instanceof Error ? nameError.message : "Could not update your name");
+    } finally {
+      setWorking(false);
     }
+  }
 
-    // Extract the folder path
-    return normalizedPath.substring(0, lastSlashIndex);
-}
-
-export default function Page() {
-
-
-    const account = useAccountDetailsStore((state) => state.account)
-    const updateAccount = useAccountDetailsStore((state) => state.fresh)
-    console.log(account)
-
-    const [modalVisible, setModalVisible] = useState(false);
-    const [key, setKey] = useState(0)
-
-    const [blur, setBlur] = useState(0)
-    const displaynameModalRef = useRef(null)
-    const infoModal = useRef(null)
-    
-    const gameoverref = useRef(null)
-
-    if(!account){
-        updateAccount()
-    }
-
-    async function updateDisplayname(displayname){
-        displaynameModalRef.current.closeModal()
-        const setDisplaynameResult = await authFetch(`${prefix}/profile/${account.id}/displayname`, {
-            headers: {
-                "Content-Type": "application/json",
-              },
-            method: "POST",
-            body: JSON.stringify({"displayname": displayname} )
-        })
-
-        const setDisplaynameResultJson = await setDisplaynameResult.json()
-
-        if(setDisplaynameResultJson.status==1){
-            updateAccount()
-        }else{
-            if(setDisplaynameResultJson.status==-1){
-                infoModal.current.openModal("Error", setDisplaynameResultJson.error, "OK")
-            }else{
-                console.error(setDisplaynameResultJson.error)
-            }
-
-        }
-
-    }
-
-    async function pickImage(){
-        let result = await  ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            selectionLimit: 1,
-            allowsEditing:true,
-            aspect:[1,1],
-            quality:0.5,
-            base64: true,
-            exif: false
-        
-        })
-        if(!result.canceled){
-            const base64 = result.assets[0].base64
-            authFetch(`${prefix}/profile/${account.id}/avatar`, {
-                headers: {
-                    "Content-Type": "application/json",
-                  },
-                method: "POST",
-                body: JSON.stringify({"avatar": base64})
-            }).then((response) => {
-                return response.json()
-            }).then((json) => {
-                // console.log(json)
-                Promise.all([Image.clearDiskCache(), Image.clearMemoryCache()]).then(() => {   
-                    setKey(key+1)
-                })
-            })
-        }
-    }
-
-    useEffect(() => {
-        if(account!=null){
-            Image.getCachePathAsync(`${prefix}/profile/${account.id}/avatar`).then((rpath) => {
-                FileSystem.getInfoAsync(getFolderPath(rpath)).then((x) => {
-                    console.log(x)
-                })
-
-                // console.log()
-            })
-        }
-    }, [account])
-
-    return(
-        <View className="bg-bg h-full">
-            {account && 
-                <>
-                    <InputModal ref={displaynameModalRef} title={"Edit name"} description={"This is how you appear to other users"} defaultvalue={account.displayName} onsubmit={updateDisplayname} setBlur={setBlur} />
-                    <InfoModal ref={infoModal} />
-                </>
-            }
-            <SafeAreaView>
-                <GameOver ref={gameoverref} />
-                <View className="">
-                    {account && 
-
-                        <>
-
-                            <View className="p-2 h-full">
-                                <View className="flex flex-row mb-4">
-                                    <Pressable className="basis-1/3 self-center pl-4" onPressIn={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color="#96e396" /></Pressable>
-                                    <Text className="basis-1/3 text-minty-4 text-l text-center font-bold">Profile</Text>
-                                </View>
-                                <View className="flex justify-center items-center">
-                                    <Pressable onPressIn={()=> pickImage()}>
-                                        <View className="">
-                                            <Image key={key} className="rounded-full" height={125} width={125} source={`${prefix}/profile/${account.id}/avatar`} cachePolicy={"disk"}  />
-                                            <View className="rounded-full p-1 bg-bg absolute top-[70%] right-0"><MaterialIcons  name="photo-camera" size={24} color="#ffffff" /></View>
-                                        </View>
-                                    </Pressable>
-                                    <Pressable onPressIn={() => displaynameModalRef.current.openModal()}>
-                                        <View className="flex flex-row mt-2 p-2 rounded-lg bg-bg2 items-center">
-                                            <Text className="text-[#ffffff] pastel-2 text-2xl mr-2">{account.displayName}</Text>
-                                            <FontAwesome name="pencil" size={18} color="#ffffff" />
-                                        </View>
-                                    </Pressable>
-                                </View>
-                                <Pressable className="mt-10" onPressIn={() => {
-                                    // gameoverref.current.openModal(7, "won")
-                                    logout()
-                                        .then(() => {
-                                            console.log("logout success")
-                                            Updates.reloadAsync()
-                                        })
-                                        .catch((err) => {
-                                            console.error(err)
-                                        })
-                                    
-                                    // testRef.current.openModal("Test", "haha testing this", "cool")
-                                    // console.log(testRef)
-                                    // testRef.current.openModal()
-                                }} >
-                                    <View className={"bg-minty-4 border-solid border-minty-4 border-[1px] rounded-lg ml-8 mr-8 h-14 "}>
-                                        <View className="m-auto flex flex-row">
-                                            <Text className="text-bg text-center text-xl ">Log out</Text>
-
-                                            {/* <Counter ref={testRef} /> */}
-                                        </View>
-                                    </View>
-                                    
-                                </Pressable>
-                            </View>
-                            
-                        </>
-                    }
-
-                    
-                </View>
-            </SafeAreaView>
-            {blur!=0 &&
-                <BlurView
-                    className="absolute top-0 bottom-0 left-0 right-0"
-                    intensity={blur}
-                    
-                />
-            }
-
+  return (
+    <SafeAreaView style={styles.screen}>
+      <Modal transparent visible={nameOpen} animationType="fade" onRequestClose={() => setNameOpen(false)}>
+        <View style={styles.modalRoot}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setNameOpen(false)} />
+          <View style={styles.nameModal}>
+            <Text style={styles.modalTitle}>Edit name</Text>
+            <Text style={styles.modalDescription}>This is how you appear to other users</Text>
+            <TextInput style={styles.nameInput} value={displayName} onChangeText={setDisplayName} maxLength={15} autoFocus selectionColor={colors.green} />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancel} onPress={() => setNameOpen(false)}><Text style={styles.modalCancelText}>Cancel</Text></Pressable>
+              <Pressable disabled={working} style={styles.modalSave} onPress={saveName}>{working ? <ActivityIndicator color={colors.background} /> : <Text style={styles.modalSaveText}>Save</Text>}</Pressable>
+            </View>
+          </View>
         </View>
-    )
+      </Modal>
+
+      <View style={styles.header}>
+        <Pressable style={styles.headerSide} onPress={() => router.back()}><FontAwesome5 name="arrow-left" size={25} color={colors.green} /></Pressable>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <View style={styles.headerSide} />
+      </View>
+
+      {account && (
+        <View style={styles.body}>
+          <Pressable style={styles.avatarWrap} onPress={pickImage}>
+            <View style={styles.avatarFallback}><Text style={styles.initial}>{account.displayName.slice(0, 1).toUpperCase()}</Text></View>
+            {!avatarFailed && <Image key={avatarVersion} source={{ uri: `${prefix}/profile/${account.id}/avatar?v=${avatarVersion}` }} style={styles.avatarImage} onError={() => setAvatarFailed(true)} />}
+            <View style={styles.cameraBadge}><MaterialIcons name="photo-camera" size={24} color={colors.text} /></View>
+            {working && <View style={styles.avatarWorking}><ActivityIndicator color={colors.green} /></View>}
+          </Pressable>
+
+          <Pressable style={styles.nameButton} onPress={() => {
+            setDisplayName(account.displayName);
+            setNameOpen(true);
+          }}>
+            <Text style={styles.name}>{account.displayName}</Text>
+            <FontAwesome name="pencil" size={18} color={colors.text} />
+          </Pressable>
+
+          {error && <Text style={styles.error}>{error}</Text>}
+
+          <Pressable style={styles.logout} onPress={signOut}><Text style={styles.logoutText}>Log out</Text></Pressable>
+        </View>
+      )}
+    </SafeAreaView>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
+  header: { height: 48, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  headerSide: { flex: 1, paddingLeft: 16 },
+  headerTitle: { flex: 1, color: colors.green, textAlign: "center", fontSize: 16, fontWeight: "800" },
+  body: { flex: 1, alignItems: "center" },
+  avatarWrap: { width: 125, height: 125 },
+  avatarFallback: { ...StyleSheet.absoluteFillObject, borderRadius: 63, backgroundColor: colors.greenStrong, alignItems: "center", justifyContent: "center" },
+  avatarImage: { ...StyleSheet.absoluteFillObject, borderRadius: 63 },
+  initial: { color: colors.background, fontSize: 42, fontWeight: "800" },
+  cameraBadge: { position: "absolute", right: -2, bottom: 7, width: 36, height: 36, borderRadius: 18, backgroundColor: colors.background, alignItems: "center", justifyContent: "center" },
+  avatarWorking: { ...StyleSheet.absoluteFillObject, borderRadius: 63, backgroundColor: "rgba(10,10,10,0.55)", alignItems: "center", justifyContent: "center" },
+  nameButton: { marginTop: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 8 },
+  name: { color: colors.text, fontSize: 24 },
+  error: { color: "#EF4444", marginHorizontal: 24, marginTop: 16, textAlign: "center" },
+  logout: { alignSelf: "stretch", height: 56, marginHorizontal: 32, marginTop: 40, borderWidth: 1, borderColor: colors.green, borderRadius: 8, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
+  logoutText: { color: colors.background, fontSize: 20 },
+  modalRoot: { flex: 1, alignItems: "center", justifyContent: "center" },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.65)" },
+  nameModal: { width: "86%", borderRadius: 12, backgroundColor: colors.surface, padding: 18 },
+  modalTitle: { color: colors.green, fontSize: 21, fontWeight: "700" },
+  modalDescription: { color: colors.muted, marginTop: 5 },
+  nameInput: { height: 52, marginTop: 20, borderWidth: 1, borderColor: colors.green, borderRadius: 8, paddingHorizontal: 10, color: colors.text, fontSize: 20 },
+  modalActions: { flexDirection: "row", marginTop: 16, gap: 8 },
+  modalCancel: { flex: 0.4, height: 46, borderRadius: 8, backgroundColor: colors.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  modalCancelText: { color: colors.text },
+  modalSave: { flex: 0.6, height: 46, borderRadius: 8, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
+  modalSaveText: { color: colors.background, fontWeight: "700" },
+});

@@ -1,0 +1,15 @@
+export const colors = {
+  black: "#000000",
+  background: "#0A0A0A",
+  surface: "#1C1B1B",
+  surfaceRaised: "#2B2A2A",
+  border: "#343232",
+  text: "#FFFFFF",
+  muted: "#686A6E",
+  green: "#96E396",
+  greenStrong: "#78CC78",
+  greenWash: "#172417",
+  gold: "#E0B546",
+  red: "#CF554C",
+  white: "#FFFFFF",
+};

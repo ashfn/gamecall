@@ -1,100 +1,71 @@
-import React, { Suspense, useState, useEffect, forwardRef, useRef, useImperativeHandle } from 'react';
-import { View, Text, Button, ActivityIndicator, TextInput } from 'react-native';
-import { gamesConfig } from '../../util/games';
-import { useProfileCache } from '../../util/friendshipStatus';
-import { authFetch } from '../../util/auth';
-import { prefix } from '../../util/config';
+import type { ComponentType, ReactNode } from "react";
+import { Text, View } from "react-native";
+import { colors } from "../../util/theme";
+import type { GameSession, User } from "../../util/types";
+import TicTacToe from "./game_components/TicTacToe";
+import WordDrop from "./game_components/WordDrop";
+import EightBall from "./game_components/EightBall";
+import NumberDrop from "./game_components/NumberDrop";
 
-const GameLoader = forwardRef((props, ref) => {
+export type GameMovePayload = Readonly<Record<string, unknown>>;
 
-    const gameData = props.gameData
-    const account = props.account
-    const setPreventLeave = props.setPreventLeave
-    const setLoading = props.setLoading
-    const gameOverRef = props.gameOverRef
+export interface GameViewProps {
+  game: GameSession;
+  account: User;
+  sending: boolean;
+  onMove: (move: GameMovePayload) => void;
+  onPresentationBusyChange?: (busy: boolean) => void;
+  turnIndicator?: ReactNode;
+  resultIndicator?: ReactNode;
+}
 
-    const getProfile = useProfileCache((state) => state.getProfile)
+export interface GameDefinition {
+  type: GameSession["type"];
+  name: string;
+  component: ComponentType<GameViewProps>;
+  fullScreen?: boolean;
+}
 
-    const [GameComponent, setGameComponent] = useState(null);
+const gameDefinitions: Record<GameSession["type"], GameDefinition> = {
+  TIC_TAC_TOE: {
+    type: "TIC_TAC_TOE",
+    name: "Tic Tac Toe",
+    component: TicTacToe,
+  },
+  WORD_DROP: {
+    type: "WORD_DROP",
+    name: "Word Drop",
+    component: WordDrop,
+    fullScreen: true,
+  },
+  EIGHT_BALL: {
+    type: "EIGHT_BALL",
+    name: "8 Ball",
+    component: EightBall,
+    fullScreen: true,
+  },
+  NUMBER_DROP: {
+    type: "NUMBER_DROP",
+    name: "Number Drop",
+    component: NumberDrop,
+    fullScreen: true,
+  },
+};
 
-    const [player1, setPlayer1] = useState(null)
-    const [player2, setPlayer2] = useState(null)
+export function getGameDefinition(type: GameSession["type"]): GameDefinition | null {
+  return gameDefinitions[type] ?? null;
+}
 
-    const preventLeaveRef = useRef(null)
-
-    const [ready, setReady] = useState(false)
-
-    useEffect(() => {
-        if(GameComponent!=null && player1!=null && player2!=null && account!=null){
-            setReady(true)
-        }
-    }, [GameComponent, player1, player2, account])
-
-    useEffect(() => {
-        const gameConfig = gamesConfig.find(game => game.id === gameData.type);
-
-        if (gameConfig) {
-            gameConfig.component().then(module => {
-                setGameComponent(() => module.default);
-            });
-        }
-    }, [gameData.type]);
-
-    useEffect(() => {
-        if(gameData.player1==undefined){
-            console.log("WOOOAH")
-        }
-        getProfile(gameData.player1).then((data) => {
-            setPlayer1(data)
-        })
-    }, [player1])
-
-    useEffect(() => {
-        if(gameData.player1==undefined){
-            console.log("WOOOAH")
-        }
-        getProfile(gameData.player2).then((data) => {
-            setPlayer2(data)
-        })
-    }, [player2])
-
-    const sendMove = async function(moves){
-        const res = await authFetch(`${prefix}/updateGame`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              "gameId": gameData.id,
-              "moves": moves
-            })
-        })
-        const json = await res.json()
-        return json
-    }
-
+export default function GameLoader(props: GameViewProps) {
+  const definition = getGameDefinition(props.game.type);
+  if (!definition) {
     return (
-        <>
-            {ready &&
-
-                <GameComponent
-                    player1={player1}
-                    player2={player2}
-                    game={gameData}
-                    sendMove={sendMove}
-                    account={account}
-                    setPreventLeave={setPreventLeave}
-                    setLoading={setLoading}
-                    gameOverRef={gameOverRef}
-                />
-            }
-            {!ready && 
-                <View className=" flex items-center justify-center">
-                    <ActivityIndicator animating={true} color={"#78cc78"} size={"large"} />
-                </View>
-            }
-        </>
+      <View style={{ padding: 24 }}>
+        <Text style={{ color: colors.text, textAlign: "center" }}>This game is not installed.</Text>
+      </View>
     );
-});
+  }
 
-export default GameLoader;
+  const GameComponent = definition.component;
+  return <GameComponent {...props} />;
+}

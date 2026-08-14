@@ -37,11 +37,15 @@ export async function getProfile(userId: number){
  * avatar should be in bytes
  */
 export async function setAvatar(userId: number, avatar: Buffer){
-    await prisma.profileImage.update({
+    await prisma.profileImage.upsert({
         where: {
             userId: userId
         },
-        data: {
+        update: {
+            avatar: avatar
+        },
+        create: {
+            userId: userId,
             avatar: avatar
         }
     })

@@ -1,229 +1,199 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import { Platform } from "react-native";
+import { create } from "zustand";
+import { prefix } from "./config";
+import { ApiResult, User } from "./types";
 
+const ACCESS_TOKEN = "rainfrog-access-token";
+const REFRESH_TOKEN = "rainfrog-refresh-token";
+const CACHED_ACCOUNT = "rainfrog-account";
+let refreshInFlight: Promise<void> | null = null;
 
-import { prefix } from "./config"
-import { router } from 'expo-router'
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { useFriendRequestsStore, useProfileCache } from './friendshipStatus';
-import { useGamesStore } from './games';
+class SessionExpiredError extends Error {}
 
-export const useAccountDetailsStore = create(
-    (set, get) => ({
-        account: null,
-        lastUpdated: 0,
-        fresh: async () => {
-            try{
-                const acc = await getAccount()
-                console.log("Updating account details store fresh")
-                set({account: acc, lastUpdated: new Date().getTime()})
-            }catch (err) {
-                throw(err)
-            }
-        },
-        update: async () => {
-            const data = get()
-            try{
-                if(new Date().getTime()-data.lastUpdated>20000 || data.account==null){
-                    const acc = await getAccount()
-                    console.log("Updating account details store fresh")
-                    set({account: acc, lastUpdated: new Date().getTime()})
-                }
-            }catch (err) {
-                throw(err)
-            }
-        },
-        get: async () => {
-            const data = get()
-            if(data.account==null){
-                const acc = await getAccount()
-                console.log("Updating account details store fresh")
-                set({account: acc, lastUpdated: new Date().getTime()})
-                return acc
-            }else{
-                return data.account
-            }
-        },
-        logout: async () => {
-            set({account: null, lastUpdated: 0})
-        }
-    })
-)
-
-async function getAccount(){
-    const details = await authFetch(`${prefix}/account`, {})
-    const response = await details.json()
-    if(response.status==1){
-        return response.data
-    }else{
-        throw new Error("Error fetching account")
-    }  
+interface AuthState {
+  account: User | null;
+  initialized: boolean;
+  initialize: () => Promise<void>;
+  refresh: () => Promise<void>;
+  clear: () => void;
 }
 
-async function getFreshAccountDetails(){
-    try{
-        const details = await authFetch(`${prefix}/account`, {})
-        const response =  await details.json()
-        return response
-    }catch (err) {
-        console.log(err)
-        return 0
+async function tokenGet(key: string) {
+  if (Platform.OS === "web") return AsyncStorage.getItem(key);
+  return SecureStore.getItemAsync(key);
+}
+
+async function tokenSet(key: string, value: string) {
+  if (Platform.OS === "web") {
+    await AsyncStorage.setItem(key, value);
+    return;
+  }
+  await SecureStore.setItemAsync(key, value);
+}
+
+async function tokenDelete(key: string) {
+  if (Platform.OS === "web") {
+    await AsyncStorage.removeItem(key);
+    return;
+  }
+  await SecureStore.deleteItemAsync(key);
+}
+
+async function fetchAccount(): Promise<User> {
+  const response = await authFetch(`${prefix}/account`, {});
+  const result = await response.json() as ApiResult<User>;
+  if (result.status !== 1 || !result.data) throw new Error(result.error ?? "Could not load account");
+  await AsyncStorage.setItem(CACHED_ACCOUNT, JSON.stringify(result.data));
+  return result.data;
+}
+
+export const useAccountDetailsStore = create<AuthState>((set) => ({
+  account: null,
+  initialized: false,
+  initialize: async () => {
+    const refreshToken = await tokenGet(REFRESH_TOKEN);
+    if (!refreshToken) {
+      set({ account: null, initialized: true });
+      return;
     }
-}
-
-export async function getAccountDetails(forceNew:boolean=false){
-    const account = await AsyncStorage.getItem("account-details")
-    console.log(`stored acc ${account}`)
-    if(account==null || forceNew){
-        console.log("Fetching fresh account details")
-        const details = await getFreshAccountDetails()
-
-        if(details==null){
-            return 0
-        }
-
-        await AsyncStorage.setItem("account-details", JSON.stringify(details))
-        return details
-    }else {
-        const decompressed = JSON.parse(account)
-        return decompressed
+    const cachedJson = await AsyncStorage.getItem(CACHED_ACCOUNT);
+    let cachedAccount: User | null = null;
+    try { cachedAccount = cachedJson ? JSON.parse(cachedJson) as User : null; } catch { cachedAccount = null; }
+    set({ account: cachedAccount, initialized: true });
+    try {
+      const account = await fetchAccount();
+      set({ account, initialized: true });
+    } catch {
+      // Keep the last verified identity visible during a temporary network outage.
     }
+  },
+  refresh: async () => {
+    const account = await fetchAccount();
+    set({ account, initialized: true });
+  },
+  clear: () => set({ account: null, initialized: true }),
+}));
+
+export async function login(usernameOrEmail: string, password: string): Promise<ApiResult<string>> {
+  const response = await fetch(`${prefix}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ account: usernameOrEmail.trim(), password }),
+  });
+  const result = await response.json() as ApiResult<string>;
+  if (result.status === 1 && result.data) {
+    await tokenSet(REFRESH_TOKEN, result.data);
+    await refreshAccessToken();
+    await useAccountDetailsStore.getState().refresh();
+  }
+  return result;
 }
 
-export async function login(usernameOrEmail: string, password: string){
-    const response = await fetch(`${prefix}/login`, {
+export async function signup(username: string, email: string, password: string): Promise<ApiResult<void>> {
+  const response = await fetch(`${prefix}/account`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: username.trim(), email: email.trim(), password }),
+  });
+  return response.json();
+}
+
+async function performAccessTokenRefresh(): Promise<void> {
+  const refreshToken = await tokenGet(REFRESH_TOKEN);
+  if (!refreshToken) throw new SessionExpiredError("No session");
+  const response = await fetch(`${prefix}/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Rainfrog-Session-Upgrade": "1",
+    },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!response.ok) throw new Error("Could not refresh your session");
+  const result = await response.json() as ApiResult<string>;
+  if (result.status !== 1 || !result.data) {
+    if (result.error?.toLowerCase().includes("invalid refresh token")) {
+      throw new SessionExpiredError("Session expired");
+    }
+    throw new Error(result.error ?? "Could not refresh your session");
+  }
+  const upgradedRefreshToken = response.headers.get("x-rainfrog-refresh-token");
+  if (upgradedRefreshToken) await tokenSet(REFRESH_TOKEN, upgradedRefreshToken);
+  await tokenSet(ACCESS_TOKEN, result.data);
+}
+
+export function refreshAccessToken(): Promise<void> {
+  if (!refreshInFlight) {
+    refreshInFlight = performAccessTokenRefresh().finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+export async function getAccessToken(): Promise<string> {
+  let accessToken = await tokenGet(ACCESS_TOKEN);
+  if (!accessToken) {
+    await refreshAccessToken();
+    accessToken = await tokenGet(ACCESS_TOKEN);
+  }
+  if (!accessToken) throw new Error("No session");
+  return accessToken;
+}
+
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  let accessToken = await tokenGet(ACCESS_TOKEN);
+  if (!accessToken) {
+    await refreshAccessToken();
+    accessToken = await tokenGet(ACCESS_TOKEN);
+  }
+
+  const makeRequest = (token: string | null) => fetch(url, {
+    ...options,
+    headers: { ...(options.headers ?? {}), Authorization: token ?? "" },
+  });
+
+  let response = await makeRequest(accessToken);
+  if (response.status === 499) {
+    try {
+      await refreshAccessToken();
+      response = await makeRequest(await tokenGet(ACCESS_TOKEN));
+    } catch (error) {
+      // A tunnel outage or a sleeping test backend must not destroy a valid
+      // multi-week local session. Only a definitive server rejection logs out.
+      if (error instanceof SessionExpiredError) {
+        await logout(false);
+        router.replace("/");
+        throw new Error("Your session expired. Please log in again.");
+      }
+      throw error;
+    }
+  }
+  return response;
+}
+
+export async function logout(notifyServer = true): Promise<void> {
+  const refreshToken = await tokenGet(REFRESH_TOKEN);
+  if (notifyServer) {
+    try {
+      const { unregisterPushNotifications } = await import("./notifications");
+      await unregisterPushNotifications();
+    } catch {
+      // Signing out should still work when notification registration is unavailable.
+    }
+    try {
+      await authFetch(`${prefix}/logout`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-          },
-        body: JSON.stringify({
-            "account":usernameOrEmail,
-            "password":password
-        })
-    })
-
-    if(response.status!=200){
-        throw new Error(`login request failed with error code ${response.status}`)
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+    } catch {
+      // Local logout should always succeed even if the server is unavailable.
     }
-
-    const json = await response.json()
-    
-
-
-    if(json.status==1){
-        await AsyncStorage.removeItem("accessToken")
-        await AsyncStorage.removeItem("refreshToken")
-        await AsyncStorage.setItem("refreshToken", json.data)
-        await refreshAccessToken()
-    }
-
-    return json
-
-}
-
-export async function signup(username: string, email: string, password: string){
-    const response = await fetch(`${prefix}/account`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-          },
-        body: JSON.stringify({
-            "username":username,
-            "email":email,
-            "password":password
-        })
-    })
-
-    if(response.status!=200){
-        throw new Error(`register request failed with error code ${response.status}`)
-    }
-
-    const json = await response.json()
-
-    return json
-}
-
-export async function logout(clearRefreshToken:boolean=true){
-
-    console.log(`CLEARING CACHED DATA`)
-
-    await useAccountDetailsStore.getState().logout()
-    useProfileCache.getState().clear()
-    useFriendRequestsStore.getState().clear()
-    useGamesStore.getState().clear()
-
-    await AsyncStorage.removeItem("accessToken")
-    await AsyncStorage.removeItem("refreshToken")
-    await AsyncStorage.removeItem("account-details")
-
-    if(clearRefreshToken){
-        await fetch(`${prefix}/logout`)
-    }
-}
-
-export async function refreshAccessToken(){
-
-    const refreshToken = await AsyncStorage.getItem("refreshToken")
-
-    console.log(`RTOKEN: ${refreshToken}`)
-
-    const response = await fetch(`${prefix}/refresh`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-          },
-        body: JSON.stringify({
-            "refreshToken":refreshToken
-        })
-    })
-
-    const json = await response.json()
-
-    if(json.status==1){
-        await AsyncStorage.removeItem("accessToken")
-        await AsyncStorage.setItem("accessToken", json.data)
-        return true
-    }else{
-        console.log(`Error /refresh: ${JSON.stringify(json)}`)
-        throw new Error(json.message)
-    }
-
-}
-
-export async function authFetch(url:string, options:any){
-
-    const accessToken = await AsyncStorage.getItem("accessToken")
-
-    if(options["headers"]==undefined){
-        options["headers"]={"Authorization":accessToken}
-    }else{
-        options["headers"]["Authorization"]=accessToken
-    }
-
-    const response = await fetch(url, options)
-    if(response.status==499){
-        if(options["authfetchalreadydone"]){
-            // console.log("Already tried once...")
-            logout(true)
-            if(router!=null){
-                router.replace("/")
-            }
-            throw new Error("Refresh token invalid, could not refresh access token")
-        }
-        // console.log("Token expired :( Trying to refresh")
-        try{
-            await refreshAccessToken()
-                
-            options["authfetchalreadydone"]=true
-
-            return await authFetch(url, options)
-        } catch(err) {
-            // console.log("Encountered error refreshing token")
-            console.log(err.toString())
-            throw new Error("Refresh token invalid due to err, could not refresh access token")
-        }
-
-
-    }
-    return response
+  }
+  await Promise.all([tokenDelete(ACCESS_TOKEN), tokenDelete(REFRESH_TOKEN), AsyncStorage.removeItem(CACHED_ACCOUNT)]);
+  const { disconnectRealtime } = await import("./realtime");
+  disconnectRealtime();
+  useAccountDetailsStore.getState().clear();
 }

@@ -1,42 +1,24 @@
-import { Slot } from 'expo-router';
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AppUpdateGate } from "../src/components/AppUpdateGate";
+import { AppNotifications } from "../src/components/AppNotifications";
+import { colors } from "../util/theme";
 
-import { View, Text } from 'react-native';
-
-// import * as StatusBar from "expo-status-bar"
-import { StatusBar } from 'expo-status-bar';
-
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router/stack';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { HoldMenuProvider } from 'react-native-hold-menu';
-
-
-export default function HomeLayout() {
-
-    return(
-        <>
-            <HoldMenuProvider theme={"dark"}  safeAreaInsets={{
-              top: 0,
-              bottom: 0,
-              left: 0,
-              right: 0,
-            }}>
-                <SafeAreaProvider>
-                    <GestureHandlerRootView>
-                            <View className="bg-bg h-full">
-                                <Stack
-                                        screenOptions={{
-                                            headerShown: false,
-                                            headerTintColor: '#fff',
-                                            headerTitleStyle: {
-                                            fontWeight: 'bold',
-                                            },
-                                        }}
-                                    />
-                            </View>
-                    </GestureHandlerRootView>
-                </SafeAreaProvider>
-            </HoldMenuProvider>
-        </>
-    );
+export default function RootLayout() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+      <SafeAreaProvider>
+        <AppUpdateGate>
+          <AppNotifications>
+            <StatusBar style="light" />
+            <Stack screenOptions={{ headerShown: false, animation: "slide_from_right", contentStyle: { backgroundColor: colors.background } }}>
+              <Stack.Screen name="friends/index" options={{ animation: "slide_from_left" }} />
+            </Stack>
+          </AppNotifications>
+        </AppUpdateGate>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
 }

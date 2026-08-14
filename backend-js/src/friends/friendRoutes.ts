@@ -3,6 +3,7 @@ import { prisma } from "..";
 import { FriendRequest, FriendRequestStatus, Friendship, GameStatus, User } from "@prisma/client";
 import { clientError, success, userError } from "../status";
 import { areFriends, createFriendRequest, createFriendship, getAllConnections, getFriendRequestsReceived, getFriends } from "./friends";
+import { notifyFriendRequest } from "../notifications/pushNotifications";
 
 export async function addFriendRequestRoute(req: Request, res: Response){
     const user = res.locals.user
@@ -47,6 +48,7 @@ export async function addFriendRequestRoute(req: Request, res: Response){
     const request = await createFriendRequest(user.id, target)
 
     if(request!=null){
+        void notifyFriendRequest(user.id, target)
         return res.send(JSON.stringify(success()))
     }else{
         return res.send(JSON.stringify(clientError("Couldn't process request. Try again later.")))
@@ -245,11 +247,16 @@ export async function getFriendRequestsRoute(req: Request, res: Response){
 
 }
 
-export function getConnectionsRoute(req: Request, res: Response){
+export async function getConnectionsRoute(req: Request, res: Response){
     const requestUser:User = res.locals.user
-
-    getAllConnections(requestUser.id).then((connections) => {
-        return res.send(success(connections))
-    })
+    const connections = await getAllConnections(requestUser.id)
+    if(req.query.profiles === "1" && connections.friends.length){
+        const friendProfiles = await prisma.user.findMany({
+            where: { id: { in: connections.friends } },
+            select: { id: true, username: true, displayName: true, accountCreated: true },
+        })
+        return res.send(success({ ...connections, friendProfiles }))
+    }
+    return res.send(success(connections))
 
 }

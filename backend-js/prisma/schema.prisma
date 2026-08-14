@@ -5,7 +5,7 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["fullTextSearch"]
 }
 
@@ -26,74 +26,200 @@ enum FriendRequestStatus {
 }
 
 model User {
-  id Int @id @default(autoincrement())
-  username String
-  email String
-  password String
-  role Role @default(USER)
-  displayName String @default("no username")
-  refreshToken String @default("none")
-  profileImage ProfileImage?
-  usernameLastChanged Int @default(0)
-  accountCreated DateTime @default(now())
-  lastOnline DateTime @default(now())
-  requestsSent FriendRequest[] @relation(name: "origin")
-  requestsReceived FriendRequest[] @relation(name: "destination")
+  id                  Int              @id @default(autoincrement())
+  username            String           @unique
+  email               String           @unique
+  password            String
+  role                Role             @default(USER)
+  displayName         String           @default("no username")
+  refreshToken        String           @default("none")
+  profileImage        ProfileImage?
+  usernameLastChanged Int              @default(0)
+  accountCreated      DateTime         @default(now())
+  lastOnline          DateTime         @default(now())
+  requestsSent        FriendRequest[]  @relation(name: "origin")
+  requestsReceived    FriendRequest[]  @relation(name: "destination")
+  pushTokens          PushToken[]
+  refreshSessions     RefreshSession[]
+  gameUser            GameUser?
+}
+
+enum GameUserKind {
+  ACCOUNT
+  ANONYMOUS
+}
+
+model GameUser {
+  id                   Int                    @id @default(autoincrement())
+  kind                 GameUserKind
+  accountId            Int?                   @unique
+  account              User?                  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  anonymousDisplayName String?
+  avatarSeed           String?
+  createdAt            DateTime               @default(now())
+  lastSeenAt           DateTime               @default(now())
+  participants         GameParticipant[]
+  anonymousSessions    AnonymousGameSession[]
+
+  @@index([accountId])
+}
+
+model AnonymousGameSession {
+  id         String   @id
+  gameUserId Int
+  gameUser   GameUser @relation(fields: [gameUserId], references: [id], onDelete: Cascade)
+  tokenHash  String
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([gameUserId])
+  @@index([expiresAt])
+}
+
+model RefreshSession {
+  id         String   @id
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PushToken {
+  token      String   @id
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String
+  deviceName String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model ProfileImage {
-  userId Int @id
-  user User @relation(fields: [userId], references: [id])
+  userId Int   @id
+  user   User  @relation(fields: [userId], references: [id])
   avatar Bytes
 }
 
 model FriendRequest {
-  @@id(fields: [requestOriginId, requestDestinationId])
-  requestOrigin User @relation(name: "origin", fields: [requestOriginId], references: [id])
-  requestOriginId Int
-  requestDestination User @relation(name: "destination", fields: [requestDestinationId], references: [id])
+  requestOrigin        User                @relation(name: "origin", fields: [requestOriginId], references: [id])
+  requestOriginId      Int
+  requestDestination   User                @relation(name: "destination", fields: [requestDestinationId], references: [id])
   requestDestinationId Int
-  status FriendRequestStatus @default(PENDING)
-  created DateTime @default(now())
+  status               FriendRequestStatus @default(PENDING)
+  created              DateTime            @default(now())
+
+  @@id(fields: [requestOriginId, requestDestinationId])
 }
 
 model Friendship {
-  @@id([user1, user2])
-  user1 Int
-  user2 Int
-  created DateTime @default(now())
-  lastActivity DateTime @default(now())
-  currentGameId Int @default(-1)
-}
+  user1         Int
+  user2         Int
+  created       DateTime @default(now())
+  lastActivity  DateTime @default(now())
+  currentGameId Int      @default(-1)
 
-enum GameType {
-  TIC_TAC_TOE
-  SPOTIFY
+  @@id([user1, user2])
 }
 
 enum GameStatus {
+  LOBBY
   STARTED
   CANCELLED
   ENDED
   ENDED_UNOPENED
 }
 
-model SpotifyToken {
-  id String @id
-  accessToken String
-  refreshToken String
-  expires BigInt
+model Game {
+  id                 Int               @id @default(autoincrement())
+  type               String // validated by the backend game registry
+  status             GameStatus
+  player1            Int // the player who takes the first turn
+  player2            Int // the other player
+  startedBy          Int // the player who sent/started the game
+  winner             Int // the final winner of the game, -1 if it is a draw, 0 if the game is in progress
+  waitingOn          Int // whose turn it is
+  gameStateJson      String // the state of the game stored in json - e.g. the board or points
+  settingsJson       String            @default("{}")
+  turnDeadline       DateTime?
+  version            Int               @default(0)
+  createdAt          DateTime          @default(now())
+  rematchOf          Int?              @unique
+  pairKey            String
+  activeKey          String?           @unique
+  lastActivity       DateTime          @default(now())
+  createdByAccountId Int?
+  minPlayers         Int               @default(2)
+  maxPlayers         Int               @default(2)
+  startedAt          DateTime?
+  participants       GameParticipant[]
+  inviteLinks        GameInviteLink[]
+
+  @@index([player1, status, lastActivity])
+  @@index([player2, status, lastActivity])
+  @@index([pairKey, lastActivity])
 }
 
-model Game {
-  id Int @id @default(autoincrement())
-  @@unique([player1, player2])
-  type GameType // the game type
-  status GameStatus
-  player1 Int // the player that initially sent the game
-  player2 Int // the player that initially received the game
-  winner Int // the final winner of the game, -1 if it is a draw, 0 if the game is in progress
-  waitingOn Int // whose turn it is
-  gameStateJson String // the state of the game stored in json - e.g. the board or points
-  lastActivity DateTime @default(now())
+model GameParticipant {
+  gameId            Int
+  game              Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  gameUserId        Int
+  gameUser          GameUser @relation(fields: [gameUserId], references: [id], onDelete: Restrict)
+  seat              Int
+  actionRequired    Boolean  @default(false)
+  joinedAt          DateTime @default(now())
+  lastViewedVersion Int      @default(-1)
+  resultRank        Int?
+  finalScore        Int?
+
+  @@id([gameId, gameUserId])
+  @@unique([gameId, seat])
+  @@index([gameUserId, actionRequired])
+  @@index([gameUserId, joinedAt])
+}
+
+model GameInviteLink {
+  id                 String    @id
+  gameId             Int
+  game               Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  secretHash         String
+  createdByAccountId Int
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime
+  revokedAt          DateTime?
+
+  @@index([gameId])
+  @@index([expiresAt])
+}
+
+model GameMoveReceipt {
+  requestId String   @id
+  gameId    Int
+  playerId  Int
+  cell      Int?
+  moveJson  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
+}
+
+model ChatMessage {
+  id              Int       @id @default(autoincrement())
+  pairKey         String
+  senderId        Int
+  recipientId     Int
+  text            String
+  clientRequestId String    @unique
+  createdAt       DateTime  @default(now())
+  readAt          DateTime?
+
+  @@index([pairKey, createdAt])
+  @@index([recipientId, senderId, readAt])
 }

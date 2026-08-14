@@ -1,7 +1,17 @@
 {
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-      "jsx": "react-jsx",
-      "module": "ESNext"
-},
-  "extends": "expo/tsconfig.base"
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "strict": true
+  },
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "util/api.ts",
+    "util/auth.ts",
+    "util/config.ts",
+    "util/games.ts",
+    "util/types.ts"
+  ]
 }

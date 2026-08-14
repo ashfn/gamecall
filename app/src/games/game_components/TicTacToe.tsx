@@ -1,216 +1,112 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { Dimensions, Text, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { useAccountDetailsStore } from "../../../util/auth";
-import Feather from '@expo/vector-icons/Feather';
-import AntDesign from '@expo/vector-icons/AntDesign';
-import { Image } from "expo-image";
-import { prefix } from "../../../util/config";
-import { useGamesStore } from "../../../util/games";
-import { router } from "expo-router";
+import * as Haptics from "expo-haptics";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { colors } from "../../../util/theme";
+import type { TicTacToeCell, TicTacToeGameSession, TicTacToeMark } from "../../../util/types";
+import type { GameViewProps } from "../GameLoader";
 
-// PLAYER 1 IS NOUGHTS
-// PLAYER 2 IS CROSSES
-
-function TicTacToeNode({game, x, y, potentialMove, setPotentialMove, myId}){
-    const gameState = JSON.parse(game.gameStateJson)
-    const board = gameState.board
-    
-    const nodeValue = board[y][x]
-    
-    const screenWidth = Dimensions.get('window').width;
-    const height = (screenWidth/3)-16
-    
-    const gesture = Gesture.Tap()
-    .runOnJS(true)
-    .onBegin(() => {
-        if(nodeValue==0){
-            setPotentialMove({x: x, y: y})
-        }
-    })
-    
-    if(nodeValue==0 && game.waitingOn==myId){
-        return (
-            <GestureDetector gesture={gesture}>
-                <View className="h-full w-full flex items-center justify-center">
-                {(potentialMove!=null && potentialMove.x ==x && potentialMove.y == y && game.player1==myId) && 
-                    // <Text className="text-minty-3">O</Text>
-                    <AntDesign name="close" size={height-10} color="#565756" />
-                }
-                {(potentialMove!=null && potentialMove.x ==x && potentialMove.y == y && game.player2==myId) && 
-
-                    <Feather name="circle" size={height-30} color="#565756" />
-                    // <Text className="text-minty-3">X</Text>
-                }
-                </View>
-            </GestureDetector>
-        )
-    }
-    
-    if(nodeValue==game.player1){
-        return (
-            <View className="h-full w-full flex items-center justify-center">
-                <AntDesign name="close" size={height-10} color="#96e396" />
-            </View>
-        )
-    }
-
-    if(nodeValue==game.player2){
-        return (
-            <View className="h-full w-full flex items-center justify-center">
-                <Feather name="circle" size={height-30} color="#96e396" />
-            </View>
-        )
-    }
+export default function TicTacToe({ game, account, sending, onMove }: GameViewProps) {
+  if (game.type !== "TIC_TAC_TOE") return null;
+  return <TicTacToeBoard game={game} account={account} sending={sending} onMove={onMove} />;
 }
 
-const TicTacToe = forwardRef((props, ref) => {
-    const player1 = props.player1
-    const player2 = props.player2
-    const [game, setGame] = useState(props.game)
-    const sendMove = props.sendMove
-    const account = props.account
-    const setPreventLeave = props.setPreventLeave
-    const setLoading = props.setLoading
-    const gameOverRef = props.gameOverRef
-    const [sending, setSending] = useState(false)
+function TicTacToeBoard({ game, account, sending, onMove }: Omit<GameViewProps, "game"> & { game: TicTacToeGameSession }) {
+  const { width } = useWindowDimensions();
+  const [potentialCell, setPotentialCell] = useState<number | null>(null);
+  const isFinished = game.status !== "STARTED";
+  const isMyTurn = !isFinished && game.waitingOn === account.id;
+  const myMark: TicTacToeMark = game.state.xPlayer === account.id ? "X" : "O";
+  const boardSize = Math.min(width - 16, 430);
 
-    const screenWidth = Dimensions.get('window').width;
-    const height = (screenWidth/3)-16
-    
-    const [potentialMove, setPotentialMove] = useState(null)
+  useEffect(() => {
+    setPotentialCell(null);
+  }, [game.id, game.version, game.status]);
 
-    const [working, setWorking] = useState(false)
+  function chooseCell(cell: number) {
+    if (!isMyTurn || sending || game.state.board[cell] !== null) return;
+    setPotentialCell(cell);
+    void Haptics.selectionAsync();
+  }
 
-    const manualUpdate = useGamesStore((state) => state.manuallyUpdate)
-    const update = useGamesStore((state) => state.forceUpdate)
+  return (
+    <>
+      <View style={[styles.board, { width: boardSize, height: boardSize }]} accessibilityLabel="Tic Tac Toe board">
+        {game.state.board.map((cell, index) => (
+          <BoardCell
+            key={index}
+            value={cell}
+            index={index}
+            winning={game.state.winningLine?.includes(index) ?? false}
+            enabled={isMyTurn && !sending && cell === null}
+            preview={potentialCell === index ? myMark : null}
+            onPress={() => chooseCell(index)}
+          />
+        ))}
+        {sending && <View pointerEvents="none" style={styles.sendingOverlay}><ActivityIndicator size="large" color={colors.green} /></View>}
+      </View>
 
-    useEffect(() => {
-        setPreventLeave(potentialMove!=null)
-    }, [potentialMove])
+      {potentialCell !== null && !isFinished && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send move"
+          disabled={sending}
+          style={styles.sendMove}
+          onPress={() => onMove({ cell: potentialCell })}
+        >
+          {sending ? <ActivityIndicator color={colors.background} /> : <Text style={styles.sendMoveText}>Send</Text>}
+        </Pressable>
+      )}
+    </>
+  );
+}
 
-    const cancel = Gesture.Tap()
-        .runOnJS(true)
-        .onBegin(() => {
-            setPotentialMove(null)
-        })
+function BoardCell({
+  value,
+  index,
+  winning,
+  enabled,
+  preview,
+  onPress,
+}: {
+  value: TicTacToeCell;
+  index: number;
+  winning: boolean;
+  enabled: boolean;
+  preview: TicTacToeMark | null;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Square ${index + 1}${value ? `, ${value}` : ", empty"}`}
+      disabled={!enabled}
+      onPress={onPress}
+      style={[
+        styles.cell,
+        index % 3 !== 2 && styles.cellRight,
+        index < 6 && styles.cellBottom,
+        winning && styles.winningCell,
+      ]}
+    >
+      {(value === "X" || preview === "X") && <Text style={[styles.markX, preview === "X" && styles.previewMark, winning && styles.winningMark]}>×</Text>}
+      {(value === "O" || preview === "O") && <View style={[styles.markO, preview === "O" && styles.previewO, winning && styles.winningO]} />}
+    </Pressable>
+  );
+}
 
-    const send = Gesture.Tap()
-        .runOnJS(true)
-        .onBegin(() => {
-            if(potentialMove!=null){
-                console.log(`Sending move ${potentialMove}`)
-                setLoading(true)
-                sendMove([[potentialMove.y, potentialMove.x]]).then((res) => {
-                    console.log(JSON.stringify(res))
-                    if(res.status==1){
-                        const newGame = res.data.game
-                        manualUpdate(newGame.id, newGame)
-                        setGame(newGame)
-                        setPotentialMove(null)
-                        if(newGame.winner==account.id){
-                            gameOverRef.current.openModal(account.id, "won", () => {router.back()})
-                        }else if(newGame.winner==-1){
-                            gameOverRef.current.openModal(account.id, "drawn", () => {router.back()})
-                        }else if(newGame.winner==0){
-                            update().then(() => {
-                                router.back()
-                            })
-                        }else{
-                            gameOverRef.current.openModal(account.id, "lost", () => {router.back()})
-                        }
-                    }
-                    setLoading(false)
-                })
-            }
-        })
-    
-
-    return (
-        <View className="p-0">
-            <View className="flex flex-row">
-            <View className="basis-1/3 w-full border-r-2 border-b-2 border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={0} y={0} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            <View className="basis-1/3 w-full border-x-2 border-b-2  border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={1} y={0} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            <View className="basis-1/3 w-full border-l-2 border-b-2  border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={2} y={0} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            </View>
-            <View className="flex flex-row">
-            <View className="basis-1/3 w-full border-y-2 border-r-2 border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={0} y={1} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            <View className="basis-1/3 w-full border-y-2 border-y-minty-4 border-x-2 border-x-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={1} y={1} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            <View className="basis-1/3 w-full border-y-2 border-l-2 border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={2} y={1} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            </View>
-            <View className="flex flex-row">
-            <View className="basis-1/3 w-full border-r-2 border-t-2 border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={0} y={2} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            <View className="basis-1/3 w-full border-x-2 border-t-2  border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={1} y={2} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            <View className="basis-1/3 w-full border-l-2 border-t-2  border-minty-4" style={{
-                height: height
-            }}>
-            <TicTacToeNode game={game} x={2} y={2} potentialMove={potentialMove} setPotentialMove={setPotentialMove} myId={account.id}/>
-            </View>
-            </View>
-            {/* shows what players are what, cant be bothered to add this in a good looking way for now */}
-            {/* <View className="flex flex-row">
-                <View className="basis-1/2 flex flex-row items-center justify-left">
-                <Image key={player1.id} className="rounded-full" height={20} width={20} source={`${prefix}/profile/${player1.id}/avatar`} cachePolicy={"disk"}  />
-                <Text className="text-[#ffffff] ml-2">{player1.displayName}</Text>
-                <AntDesign name="close" size={20} color="#ffffff" />
-                </View>
-                <View className="basis-1/2 flex flex-row items-center justify-right">
-                <Image key={player2.id} className="rounded-full" height={20} width={20} source={`${prefix}/profile/${player2.id}/avatar`} cachePolicy={"disk"}  />
-                <Text className="text-[#ffffff] ml-2">{player2.displayName}</Text>
-                <Feather name="circle" size={16} color="#ffffff" />
-                </View>
-                </View> */}
-                {/* 
-                    DEBUGGING DATA
-                    <Text className="text-minty-3">Player1: {JSON.stringify(player1)}</Text>
-                    <Text className="text-minty-3">Player2: {JSON.stringify(player2)}</Text>
-                    <Text className="text-minty-3">game: {JSON.stringify(game)}</Text> */}
-            <View>
-                {potentialMove!=null && 
-                    <View className="flex flex-row">
-                        <GestureDetector gesture={send}>
-                            <View className="bg-minty-4 rounded-lg px-6 py-2">
-                                <Text className="text-bg text-lg">Send</Text>
-                            </View>
-                        </GestureDetector>
-                    </View>
-                }
-            </View>
-                
-        </View>
-    )
-})
-        
-export default TicTacToe
+const styles = StyleSheet.create({
+  board: { alignSelf: "center", flexDirection: "row", flexWrap: "wrap", backgroundColor: colors.background },
+  cell: { width: "33.3333%", height: "33.3333%", alignItems: "center", justifyContent: "center", borderColor: colors.green },
+  cellRight: { borderRightWidth: 4 },
+  cellBottom: { borderBottomWidth: 4 },
+  winningCell: { backgroundColor: "#171F17" },
+  markX: { color: colors.green, fontSize: 118, lineHeight: 120, fontWeight: "200", marginTop: -12 },
+  markO: { width: "62%", height: "62%", borderRadius: 999, borderWidth: 6, borderColor: colors.green },
+  previewMark: { color: "#565756" },
+  previewO: { borderColor: "#565756" },
+  winningMark: { color: colors.gold },
+  winningO: { borderColor: colors.gold },
+  sendingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,10,10,0.45)", alignItems: "center", justifyContent: "center" },
+  sendMove: { minWidth: 110, height: 45, marginTop: 18, borderRadius: 8, backgroundColor: colors.green, paddingHorizontal: 24, alignItems: "center", justifyContent: "center" },
+  sendMoveText: { color: colors.background, fontSize: 18 },
+});

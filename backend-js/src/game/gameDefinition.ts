@@ -30,6 +30,7 @@ import {
   NumberDropState,
   viewNumberDropState,
 } from "./gamestate/games/NUMBER_DROP";
+import { applyChessMove, ChessState, createChessState, normalizeChessState } from "./gamestate/games/CHESS";
 
 export interface AuthoritativeMoveResult {
   state: unknown;
@@ -105,6 +106,17 @@ const numberDropNotification: GameNotificationModifier = (notification, context)
     : { ...notification, body: `Round ${state.currentRound} of ${state.totalRounds} is ready.` };
 };
 
+const chessNotification: GameNotificationModifier = (notification, context) => {
+  if (context.event !== "turn" || !context.state || typeof context.state !== "object") return notification;
+  const state = context.state as ChessState;
+  const move = state.lastMove;
+  if (!move) return notification;
+  return {
+    ...notification,
+    body: `${context.actorName} played ${move.san}.${state.inCheck ? " Check." : " Your move."}`,
+  };
+};
+
 const definitions: Record<GameType, GameDefinition> = {
   [GameType.TIC_TAC_TOE]: {
     type: GameType.TIC_TAC_TOE,
@@ -148,6 +160,15 @@ const definitions: Record<GameType, GameDefinition> = {
     applyMove: applyNumberDropMove,
     applyTurnTimeout: applyNumberDropTurnTimeout,
     modifyNotification: numberDropNotification,
+  },
+  [GameType.CHESS]: {
+    type: GameType.CHESS,
+    displayName: "Chess",
+    normalizeSettings: () => ({}),
+    createState: createChessState,
+    normalizeState: normalizeChessState,
+    applyMove: applyChessMove,
+    modifyNotification: chessNotification,
   },
 };
 

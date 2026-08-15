@@ -6,6 +6,7 @@ const TIC_TAC_TOE_1 = require("./gamestate/games/TIC_TAC_TOE");
 const WORD_DROP_1 = require("./gamestate/games/WORD_DROP");
 const EIGHT_BALL_1 = require("./gamestate/games/EIGHT_BALL");
 const NUMBER_DROP_1 = require("./gamestate/games/NUMBER_DROP");
+const CHESS_1 = require("./gamestate/games/CHESS");
 function moveCell(move) {
     if (!move || typeof move !== "object")
         return Number.NaN;
@@ -59,6 +60,15 @@ const numberDropNotification = (notification, context) => {
     return roundHasSubmission
         ? Object.assign(Object.assign({}, notification), { body: `${context.actorName} locked an answer. Your turn.` }) : Object.assign(Object.assign({}, notification), { body: `Round ${state.currentRound} of ${state.totalRounds} is ready.` });
 };
+const chessNotification = (notification, context) => {
+    if (context.event !== "turn" || !context.state || typeof context.state !== "object")
+        return notification;
+    const state = context.state;
+    const move = state.lastMove;
+    if (!move)
+        return notification;
+    return Object.assign(Object.assign({}, notification), { body: `${context.actorName} played ${move.san}.${state.inCheck ? " Check." : " Your move."}` });
+};
 const definitions = {
     [gameTypes_1.GameType.TIC_TAC_TOE]: {
         type: gameTypes_1.GameType.TIC_TAC_TOE,
@@ -102,6 +112,15 @@ const definitions = {
         applyMove: NUMBER_DROP_1.applyNumberDropMove,
         applyTurnTimeout: NUMBER_DROP_1.applyNumberDropTurnTimeout,
         modifyNotification: numberDropNotification,
+    },
+    [gameTypes_1.GameType.CHESS]: {
+        type: gameTypes_1.GameType.CHESS,
+        displayName: "Chess",
+        normalizeSettings: () => ({}),
+        createState: CHESS_1.createChessState,
+        normalizeState: CHESS_1.normalizeChessState,
+        applyMove: CHESS_1.applyChessMove,
+        modifyNotification: chessNotification,
     },
 };
 exports.supportedGameTypes = Object.keys(definitions);

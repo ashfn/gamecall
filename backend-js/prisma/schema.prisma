@@ -175,6 +175,7 @@ model GameParticipant {
   seat              Int
   actionRequired    Boolean  @default(false)
   joinedAt          DateTime @default(now())
+  hiddenAt          DateTime?
   lastViewedVersion Int      @default(-1)
   resultRank        Int?
   finalScore        Int?

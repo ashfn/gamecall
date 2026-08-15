@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.finishGameRoute = exports.updateGameRoute = exports.endGameRoute = exports.rematchGameRoute = exports.makeMoveRoute = exports.openTurnRoute = exports.sendGameRoute = exports.getGameRoute = exports.getActiveGamesRoute = void 0;
+exports.finishGameRoute = exports.updateGameRoute = exports.hideFinishedGamesWithOpponentRoute = exports.hideGameRoute = exports.endGameRoute = exports.rematchGameRoute = exports.makeMoveRoute = exports.openTurnRoute = exports.sendGameRoute = exports.getGameRoute = exports.getActiveGamesRoute = exports.findGameForPlayer = exports.toGameDto = void 0;
 const client_1 = require("@prisma/client");
 const __1 = require("..");
 const friends_1 = require("../friends/friends");
@@ -19,6 +19,7 @@ const realtime_1 = require("../realtime/realtime");
 const gameDefinition_1 = require("./gameDefinition");
 const gameParticipants_1 = require("./gameParticipants");
 const gameTypes_1 = require("./gameTypes");
+const gameIdentity_1 = require("./gameIdentity");
 const publicProfile = {
     id: true,
     username: true,
@@ -84,6 +85,13 @@ function expireTimedGame(game) {
         if (!current)
             return game;
         if (expired.count === 1) {
+            yield __1.prisma.gameParticipant.updateMany({ where: { gameId: current.id }, data: { actionRequired: false } });
+            if (!finished && current.waitingOn > 0) {
+                yield __1.prisma.gameParticipant.updateMany({
+                    where: { gameId: current.id, gameUserId: current.waitingOn },
+                    data: { actionRequired: true },
+                });
+            }
             (0, realtime_1.emitGameChanged)(current);
             const notificationRecipient = finished ? opponent : current.waitingOn;
             if (notificationRecipient !== timedOutPlayer) {
@@ -93,20 +101,32 @@ function expireTimedGame(game) {
         return current;
     });
 }
-function toGameDto(storedGame, viewerId, knownOpponent) {
+function participantIds(game) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c;
+        const stored = yield __1.prisma.gameParticipant.findMany({
+            where: { gameId: game.id },
+            orderBy: { seat: "asc" },
+            select: { gameUserId: true },
+        });
+        return stored.length > 0 ? stored.map((participant) => participant.gameUserId) : [game.player1, game.player2];
+    });
+}
+function toGameDto(storedGame, viewerId, knownPlayers) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c, _d;
         const game = yield expireTimedGame(storedGame);
-        const opponentId = game.player1 === viewerId ? game.player2 : game.player1;
-        const opponent = knownOpponent !== null && knownOpponent !== void 0 ? knownOpponent : yield __1.prisma.user.findUnique({ where: { id: opponentId }, select: publicProfile });
+        const ids = yield participantIds(game);
+        const playerProfiles = knownPlayers !== null && knownPlayers !== void 0 ? knownPlayers : yield (0, gameIdentity_1.publicGameUsers)(ids);
+        const players = ids.map((id) => playerProfiles.get(id)).filter((player) => Boolean(player));
+        const opponent = (_a = players.find((player) => player.id !== viewerId)) !== null && _a !== void 0 ? _a : null;
         let state;
         try {
             const parsed = JSON.parse(game.gameStateJson);
             const definition = (0, gameDefinition_1.getGameDefinition)(game.type);
-            const normalized = (_a = definition === null || definition === void 0 ? void 0 : definition.normalizeState(parsed)) !== null && _a !== void 0 ? _a : parsed;
-            state = (_c = (_b = definition === null || definition === void 0 ? void 0 : definition.viewState) === null || _b === void 0 ? void 0 : _b.call(definition, normalized, viewerId)) !== null && _c !== void 0 ? _c : normalized;
+            const normalized = (_b = definition === null || definition === void 0 ? void 0 : definition.normalizeState(parsed)) !== null && _b !== void 0 ? _b : parsed;
+            state = (_d = (_c = definition === null || definition === void 0 ? void 0 : definition.viewState) === null || _c === void 0 ? void 0 : _c.call(definition, normalized, viewerId)) !== null && _d !== void 0 ? _d : normalized;
         }
-        catch (_d) {
+        catch (_e) {
             state = null;
         }
         return {
@@ -126,75 +146,89 @@ function toGameDto(storedGame, viewerId, knownOpponent) {
             turnDeadline: game.turnDeadline,
             state,
             opponent,
+            players,
+            viewerGameUserId: viewerId,
+            minPlayers: game.minPlayers,
+            maxPlayers: game.maxPlayers,
         };
     });
 }
-function findGameForPlayer(gameId, userId) {
+exports.toGameDto = toGameDto;
+function findGameForPlayer(gameId, gameUserId) {
     return __awaiter(this, void 0, void 0, function* () {
         return __1.prisma.game.findFirst({
             where: {
                 id: gameId,
-                OR: [{ player1: userId }, { player2: userId }],
+                participants: { some: { gameUserId } },
             },
         });
     });
 }
+exports.findGameForPlayer = findGameForPlayer;
 function getActiveGamesRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        const user = res.locals.user;
+        const gameUserId = res.locals.gameUserId;
         const hasOpponentFilter = req.query.opponentId !== undefined;
-        const opponentId = hasOpponentFilter ? parseId(req.query.opponentId) : null;
-        if (hasOpponentFilter && !opponentId)
+        const opponentAccountId = hasOpponentFilter ? parseId(req.query.opponentId) : null;
+        if (hasOpponentFilter && !opponentAccountId)
             return res.send((0, status_1.clientError)("Invalid opponent id"));
+        const opponentGameUser = opponentAccountId
+            ? yield __1.prisma.gameUser.findUnique({ where: { accountId: opponentAccountId }, select: { id: true } })
+            : null;
+        if (opponentAccountId && !opponentGameUser)
+            return res.send((0, status_1.success)([]));
         const games = yield __1.prisma.game.findMany({
-            where: {
-                OR: opponentId
-                    ? [
-                        { player1: user.id, player2: opponentId },
-                        { player1: opponentId, player2: user.id },
-                    ]
-                    : [{ player1: user.id }, { player2: user.id }],
-                type: { in: gameDefinition_1.supportedGameTypes },
-                status: { in: [client_1.GameStatus.STARTED, client_1.GameStatus.ENDED_UNOPENED, client_1.GameStatus.ENDED] },
-            },
+            where: Object.assign(Object.assign({ participants: {
+                    some: { gameUserId, hiddenAt: null },
+                } }, (opponentGameUser ? {
+                AND: { participants: { some: { gameUserId: opponentGameUser.id } } },
+            } : {})), { type: { in: gameDefinition_1.supportedGameTypes }, status: { in: [client_1.GameStatus.STARTED, client_1.GameStatus.ENDED_UNOPENED, client_1.GameStatus.ENDED] } }),
             orderBy: { lastActivity: "desc" },
-            take: opponentId ? 100 : 30,
+            take: opponentGameUser ? 100 : 30,
         });
-        const opponentIds = [...new Set(games.map((game) => game.player1 === user.id ? game.player2 : game.player1))];
-        const profiles = yield __1.prisma.user.findMany({ where: { id: { in: opponentIds } }, select: publicProfile });
-        const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
-        return res.send((0, status_1.success)(yield Promise.all(games.map((game) => {
-            const gameOpponentId = game.player1 === user.id ? game.player2 : game.player1;
-            return toGameDto(game, user.id, profilesById.get(gameOpponentId));
-        }))));
+        const memberships = yield __1.prisma.gameParticipant.findMany({
+            where: { gameId: { in: games.map((game) => game.id) } },
+            select: { gameId: true, gameUserId: true },
+        });
+        const profiles = yield (0, gameIdentity_1.publicGameUsers)(memberships.map((membership) => membership.gameUserId));
+        return res.send((0, status_1.success)(yield Promise.all(games.map((game) => toGameDto(game, gameUserId, profiles)))));
     });
 }
 exports.getActiveGamesRoute = getActiveGamesRoute;
 function getGameRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        const user = res.locals.user;
+        const gameUserId = res.locals.gameUserId;
         const gameId = parseId(req.params.gameId);
         if (!gameId)
             return res.send((0, status_1.clientError)("Invalid game id"));
-        const game = yield findGameForPlayer(gameId, user.id);
+        const game = yield findGameForPlayer(gameId, gameUserId);
         if (!game)
             return res.send((0, status_1.userError)("Game not found"));
         if (!(0, gameDefinition_1.getGameDefinition)(game.type))
             return res.send((0, status_1.userError)("This game is not installed"));
-        return res.send((0, status_1.success)(yield toGameDto(game, user.id)));
+        yield __1.prisma.gameParticipant.update({
+            where: { gameId_gameUserId: { gameId, gameUserId } },
+            data: { lastViewedVersion: game.version },
+        }).catch(() => undefined);
+        return res.send((0, status_1.success)(yield toGameDto(game, gameUserId)));
     });
 }
 exports.getGameRoute = getGameRoute;
-function createGame(userId_1, targetId_1, type_1) {
-    return __awaiter(this, arguments, void 0, function* (userId, targetId, type, rawSettings = {}, rematchOf) {
+function createGame(accountUserId_1, senderGameUserId_1, targetGameUserId_1, type_1) {
+    return __awaiter(this, arguments, void 0, function* (accountUserId, senderGameUserId, targetGameUserId, type, rawSettings = {}, rematchOf) {
         const definition = (0, gameDefinition_1.getGameDefinition)(type);
         if (!definition)
             throw new Error("This game is not installed");
         const settings = definition.normalizeSettings(rawSettings);
-        const key = pairKey(userId, targetId);
-        const participants = (0, gameParticipants_1.newGameParticipants)(userId, targetId);
+        const key = pairKey(senderGameUserId, targetGameUserId);
+        const participants = (0, gameParticipants_1.newGameParticipants)(senderGameUserId, targetGameUserId);
         return __1.prisma.game.create({
-            data: Object.assign(Object.assign({}, participants), { winner: 0, status: client_1.GameStatus.STARTED, type, settingsJson: JSON.stringify(settings), turnDeadline: null, gameStateJson: JSON.stringify(definition.createState(participants.player1, participants.player2, settings)), pairKey: key, activeKey: key, rematchOf }),
+            data: Object.assign(Object.assign({}, participants), { winner: 0, status: client_1.GameStatus.STARTED, type, settingsJson: JSON.stringify(settings), turnDeadline: null, gameStateJson: JSON.stringify(definition.createState(participants.player1, participants.player2, settings)), pairKey: key, activeKey: key, rematchOf, createdByAccountId: accountUserId, startedAt: new Date(), participants: {
+                    create: [
+                        { gameUserId: participants.player1, seat: 0, actionRequired: true },
+                        { gameUserId: participants.player2, seat: 1, actionRequired: false },
+                    ],
+                } }),
         });
     });
 }
@@ -202,6 +236,9 @@ function sendGameRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b;
         const user = res.locals.user;
+        if (!user)
+            return res.send((0, status_1.userError)("Create a Rainfrog account to start games"));
+        const senderGameUserId = res.locals.gameUserId;
         const targetId = parseId((_a = req.body.user) !== null && _a !== void 0 ? _a : req.body.opponentId);
         if (!targetId)
             return res.send((0, status_1.clientError)("Choose a valid opponent"));
@@ -217,14 +254,16 @@ function sendGameRoute(req, res) {
             return res.send((0, status_1.userError)("Add this person as a friend before starting a game"));
         }
         try {
-            const game = yield createGame(user.id, targetId, definition.type, req.body.settings);
+            const targetGameUser = yield (0, gameIdentity_1.ensureAccountGameUser)(targetId);
+            const game = yield createGame(user.id, senderGameUserId, targetGameUser.id, definition.type, req.body.settings);
             (0, realtime_1.emitGameChanged)(game);
-            void (0, pushNotifications_1.notifyGame)("started", game, user.id, targetId);
-            return res.send((0, status_1.success)(yield toGameDto(game, user.id)));
+            void (0, pushNotifications_1.notifyGame)("started", game, senderGameUserId, targetGameUser.id);
+            return res.send((0, status_1.success)(yield toGameDto(game, senderGameUserId)));
         }
         catch (error) {
             if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-                const existing = yield __1.prisma.game.findUnique({ where: { activeKey: pairKey(user.id, targetId) } });
+                const targetGameUser = yield (0, gameIdentity_1.ensureAccountGameUser)(targetId);
+                const existing = yield __1.prisma.game.findUnique({ where: { activeKey: pairKey(senderGameUserId, targetGameUser.id) } });
                 if (existing)
                     return res.send((0, status_1.userError)("You already have an active game with this friend"));
             }
@@ -236,27 +275,27 @@ function sendGameRoute(req, res) {
 exports.sendGameRoute = sendGameRoute;
 function openTurnRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        const user = res.locals.user;
+        const gameUserId = res.locals.gameUserId;
         const gameId = parseId(req.params.gameId);
         if (!gameId)
             return res.send((0, status_1.clientError)("Invalid game id"));
-        const stored = yield findGameForPlayer(gameId, user.id);
+        const stored = yield findGameForPlayer(gameId, gameUserId);
         if (!stored)
             return res.send((0, status_1.userError)("Game not found"));
         const game = yield expireTimedGame(stored);
-        if (game.status !== client_1.GameStatus.STARTED || game.waitingOn !== user.id || game.turnDeadline) {
-            return res.send((0, status_1.success)(yield toGameDto(game, user.id)));
+        if (game.status !== client_1.GameStatus.STARTED || game.waitingOn !== gameUserId || game.turnDeadline) {
+            return res.send((0, status_1.success)(yield toGameDto(game, gameUserId)));
         }
         const settings = settingsForGame(game);
         const deadline = nextTurnDeadline(game.type, settings);
         if (!deadline)
-            return res.send((0, status_1.success)(yield toGameDto(game, user.id)));
+            return res.send((0, status_1.success)(yield toGameDto(game, gameUserId)));
         const activated = yield __1.prisma.game.updateMany({
             where: {
                 id: game.id,
                 version: game.version,
                 status: client_1.GameStatus.STARTED,
-                waitingOn: user.id,
+                waitingOn: gameUserId,
                 turnDeadline: null,
             },
             data: { turnDeadline: deadline },
@@ -266,7 +305,7 @@ function openTurnRoute(req, res) {
             return res.send((0, status_1.userError)("Game not found"));
         if (activated.count === 1)
             (0, realtime_1.emitGameChanged)(current);
-        return res.send((0, status_1.success)(yield toGameDto(current, user.id)));
+        return res.send((0, status_1.success)(yield toGameDto(current, gameUserId)));
     });
 }
 exports.openTurnRoute = openTurnRoute;
@@ -288,7 +327,11 @@ function commitMove(command) {
                         return { game: duplicateGame, changed: false };
                     }
                     const game = yield tx.game.findUnique({ where: { id: command.gameId } });
-                    if (!game || (game.player1 !== command.userId && game.player2 !== command.userId)) {
+                    const membership = yield tx.gameParticipant.findUnique({
+                        where: { gameId_gameUserId: { gameId: command.gameId, gameUserId: command.userId } },
+                        select: { gameUserId: true },
+                    });
+                    if (!game || !membership) {
                         throw new Error("Game not found");
                     }
                     const definition = (0, gameDefinition_1.getGameDefinition)(game.type);
@@ -320,6 +363,13 @@ function commitMove(command) {
                     });
                     if (updated.count !== 1)
                         throw new Error("The game changed. Refresh and try again.");
+                    yield tx.gameParticipant.updateMany({ where: { gameId: game.id }, data: { actionRequired: false } });
+                    if (!finished && result.nextPlayer > 0) {
+                        yield tx.gameParticipant.updateMany({
+                            where: { gameId: game.id, gameUserId: result.nextPlayer },
+                            data: { actionRequired: true },
+                        });
+                    }
                     yield tx.gameMoveReceipt.create({
                         data: {
                             requestId: command.requestId,
@@ -354,15 +404,15 @@ function commitMove(command) {
 }
 function makeMoveRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c, _d;
-        const user = res.locals.user;
+        var _a, _b, _c, _d, _e;
+        const gameUserId = res.locals.gameUserId;
         const gameId = parseId((_a = req.params.gameId) !== null && _a !== void 0 ? _a : req.body.gameId);
         const move = (_b = req.body.move) !== null && _b !== void 0 ? _b : { cell: req.body.cell };
         let moveJson = "";
         try {
             moveJson = JSON.stringify(move);
         }
-        catch (_e) {
+        catch (_f) {
             return res.send((0, status_1.clientError)("Invalid move request"));
         }
         const expectedVersion = Number(req.body.expectedVersion);
@@ -374,7 +424,7 @@ function makeMoveRoute(req, res) {
         if (!requestId || requestId.length > 100)
             return res.send((0, status_1.clientError)("Invalid move request"));
         try {
-            const stored = yield findGameForPlayer(gameId, user.id);
+            const stored = yield findGameForPlayer(gameId, gameUserId);
             const current = stored ? yield expireTimedGame(stored) : null;
             const definition = current ? (0, gameDefinition_1.getGameDefinition)(current.type) : null;
             if (!current || !definition)
@@ -382,19 +432,21 @@ function makeMoveRoute(req, res) {
             if (current.status !== client_1.GameStatus.STARTED)
                 return res.send((0, status_1.userError)("This game has already finished"));
             const legacyMoveCode = (_d = (_c = definition.legacyMoveCode) === null || _c === void 0 ? void 0 : _c.call(definition, move)) !== null && _d !== void 0 ? _d : null;
-            const committed = yield commitMove({ gameId, userId: user.id, move, moveJson, legacyMoveCode, expectedVersion, requestId });
+            const committed = yield commitMove({ gameId, userId: gameUserId, move, moveJson, legacyMoveCode, expectedVersion, requestId });
             const game = committed.game;
             if (committed.changed) {
-                const opponentId = game.player1 === user.id ? game.player2 : game.player1;
-                const notificationRecipient = game.status === client_1.GameStatus.STARTED ? game.waitingOn : opponentId;
+                const ids = yield participantIds(game);
+                const notificationRecipient = game.status === client_1.GameStatus.STARTED
+                    ? game.waitingOn
+                    : (_e = ids.find((id) => id !== gameUserId)) !== null && _e !== void 0 ? _e : 0;
                 // In games such as 8 Ball, a successful shot can leave the turn with
                 // the shooter. Never tell the opponent it is their turn in that case.
-                if (notificationRecipient !== user.id) {
-                    void (0, pushNotifications_1.notifyGame)(game.status === client_1.GameStatus.STARTED ? "turn" : "finished", game, user.id, notificationRecipient);
+                if (notificationRecipient > 0 && notificationRecipient !== gameUserId) {
+                    void (0, pushNotifications_1.notifyGame)(game.status === client_1.GameStatus.STARTED ? "turn" : "finished", game, gameUserId, notificationRecipient);
                 }
                 (0, realtime_1.emitGameChanged)(game);
             }
-            return res.send((0, status_1.success)(yield toGameDto(game, user.id)));
+            return res.send((0, status_1.success)(yield toGameDto(game, gameUserId)));
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "The move could not be saved";
@@ -405,43 +457,69 @@ function makeMoveRoute(req, res) {
 exports.makeMoveRoute = makeMoveRoute;
 function rematchGameRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c, _d, _e, _f;
         const user = res.locals.user;
+        const gameUserId = res.locals.gameUserId;
         const gameId = parseId(req.params.gameId);
         if (!gameId)
             return res.send((0, status_1.clientError)("Invalid game id"));
-        const storedOriginal = yield findGameForPlayer(gameId, user.id);
+        const storedOriginal = yield findGameForPlayer(gameId, gameUserId);
         const original = storedOriginal ? yield expireTimedGame(storedOriginal) : null;
         if (!original)
             return res.send((0, status_1.userError)("Game not found"));
         const originalDefinition = (0, gameDefinition_1.getGameDefinition)(original.type);
         if (!originalDefinition)
             return res.send((0, status_1.userError)("This game is not installed"));
+        const requestedDefinition = ((_a = req.body) === null || _a === void 0 ? void 0 : _a.game) === undefined
+            ? originalDefinition
+            : (0, gameDefinition_1.getGameDefinition)(req.body.game);
+        if (!requestedDefinition)
+            return res.send((0, status_1.userError)("That game is not installed"));
         if (original.status === client_1.GameStatus.STARTED)
             return res.send((0, status_1.userError)("Finish this game before starting a rematch"));
-        const targetId = original.player1 === user.id ? original.player2 : original.player1;
-        if (!(yield canPlayTogether(user.id, targetId)))
-            return res.send((0, status_1.userError)("You must still be friends to rematch"));
+        const ids = yield participantIds(original);
+        if (ids.length !== 2)
+            return res.send((0, status_1.userError)("Start a new lobby to play this group again"));
+        const targetGameUserId = ids.find((id) => id !== gameUserId);
+        const [viewerProfile, targetProfile] = yield Promise.all([
+            (0, gameIdentity_1.publicGameUser)(gameUserId),
+            (0, gameIdentity_1.publicGameUser)(targetGameUserId),
+        ]);
+        if (!viewerProfile || !targetProfile)
+            return res.send((0, status_1.userError)("Player not found"));
+        if (!viewerProfile.accountId && !targetProfile.accountId) {
+            return res.send((0, status_1.userError)("A Rainfrog account is required to restart this game"));
+        }
+        if (viewerProfile.accountId && targetProfile.accountId
+            && !(yield canPlayTogether(viewerProfile.accountId, targetProfile.accountId))) {
+            return res.send((0, status_1.userError)("You must still be friends to play again"));
+        }
+        const creatorAccountId = (_d = (_c = (_b = user === null || user === void 0 ? void 0 : user.id) !== null && _b !== void 0 ? _b : viewerProfile.accountId) !== null && _c !== void 0 ? _c : targetProfile.accountId) !== null && _d !== void 0 ? _d : original.createdByAccountId;
+        if (!creatorAccountId)
+            return res.send((0, status_1.userError)("A Rainfrog account is required to restart this game"));
         const existing = yield __1.prisma.game.findUnique({ where: { rematchOf: original.id } });
         if (existing)
-            return res.send((0, status_1.success)(yield toGameDto(existing, user.id)));
+            return res.send((0, status_1.success)(yield toGameDto(existing, gameUserId)));
         try {
-            let settings = {};
-            try {
-                settings = JSON.parse(original.settingsJson);
+            let settings = (_e = req.body) === null || _e === void 0 ? void 0 : _e.settings;
+            if (((_f = req.body) === null || _f === void 0 ? void 0 : _f.game) === undefined) {
+                try {
+                    settings = JSON.parse(original.settingsJson);
+                }
+                catch (_g) {
+                    settings = {};
+                }
             }
-            catch (_a) {
-                settings = {};
-            }
-            const game = yield createGame(user.id, targetId, originalDefinition.type, settings, original.id);
+            const game = yield createGame(creatorAccountId, gameUserId, targetGameUserId, requestedDefinition.type, settings, original.id);
             (0, realtime_1.emitGameChanged)(game);
-            void (0, pushNotifications_1.notifyGame)("rematch", game, user.id, targetId);
-            return res.send((0, status_1.success)(yield toGameDto(game, user.id)));
+            void (0, pushNotifications_1.notifyGame)(requestedDefinition.type === originalDefinition.type ? "rematch" : "started", game, gameUserId, targetGameUserId);
+            return res.send((0, status_1.success)(yield toGameDto(game, gameUserId)));
         }
         catch (error) {
             if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-                const active = yield __1.prisma.game.findUnique({ where: { activeKey: pairKey(user.id, targetId) } });
+                const active = yield __1.prisma.game.findUnique({ where: { activeKey: pairKey(gameUserId, targetGameUserId) } });
                 if (active)
-                    return res.send((0, status_1.success)(yield toGameDto(active, user.id)));
+                    return res.send((0, status_1.success)(yield toGameDto(active, gameUserId)));
             }
             console.error(error);
             return res.send((0, status_1.clientError)("Could not start the rematch"));
@@ -451,24 +529,82 @@ function rematchGameRoute(req, res) {
 exports.rematchGameRoute = rematchGameRoute;
 function endGameRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        const user = res.locals.user;
+        const gameUserId = res.locals.gameUserId;
         const gameId = parseId(req.body.gameId);
         if (!gameId)
             return res.send((0, status_1.clientError)("Invalid game id"));
-        const game = yield findGameForPlayer(gameId, user.id);
+        const game = yield findGameForPlayer(gameId, gameUserId);
         if (!game || game.status !== client_1.GameStatus.STARTED)
             return res.send((0, status_1.userError)("This game is not in progress"));
-        const winner = game.player1 === user.id ? game.player2 : game.player1;
+        const ids = yield participantIds(game);
+        if (ids.length !== 2)
+            return res.send((0, status_1.userError)("Leaving multiplayer games is not supported yet"));
+        const winner = ids.find((id) => id !== gameUserId);
         const updated = yield __1.prisma.game.update({
             where: { id: game.id },
             data: { status: client_1.GameStatus.ENDED, winner, waitingOn: 0, activeKey: null, turnDeadline: null, version: { increment: 1 }, lastActivity: new Date() },
         });
         (0, realtime_1.emitGameChanged)(updated);
-        void (0, pushNotifications_1.notifyGame)("finished", updated, user.id, winner);
-        return res.send((0, status_1.success)(yield toGameDto(updated, user.id)));
+        yield __1.prisma.gameParticipant.updateMany({ where: { gameId: game.id }, data: { actionRequired: false } });
+        void (0, pushNotifications_1.notifyGame)("finished", updated, gameUserId, winner);
+        return res.send((0, status_1.success)(yield toGameDto(updated, gameUserId)));
     });
 }
 exports.endGameRoute = endGameRoute;
+function hideGameRoute(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const gameUserId = res.locals.gameUserId;
+        const gameId = parseId(req.params.gameId);
+        if (!gameId)
+            return res.send((0, status_1.clientError)("Invalid game id"));
+        const game = yield findGameForPlayer(gameId, gameUserId);
+        if (!game)
+            return res.send((0, status_1.userError)("Game not found"));
+        if (game.status === client_1.GameStatus.STARTED)
+            return res.send((0, status_1.userError)("End this game before removing it"));
+        yield __1.prisma.gameParticipant.update({
+            where: { gameId_gameUserId: { gameId, gameUserId } },
+            data: { hiddenAt: new Date(), actionRequired: false },
+        });
+        return res.send((0, status_1.success)({ gameId }));
+    });
+}
+exports.hideGameRoute = hideGameRoute;
+function hideFinishedGamesWithOpponentRoute(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const gameUserId = res.locals.gameUserId;
+        const opponentGameUserId = parseId(req.params.opponentId);
+        if (!opponentGameUserId || opponentGameUserId === gameUserId) {
+            return res.send((0, status_1.clientError)("Invalid opponent id"));
+        }
+        const anonymousOpponent = yield __1.prisma.gameUser.findFirst({
+            where: { id: opponentGameUserId, accountId: null },
+            select: { id: true },
+        });
+        if (!anonymousOpponent)
+            return res.send((0, status_1.userError)("Online player not found"));
+        const memberships = yield __1.prisma.gameParticipant.findMany({
+            where: {
+                gameUserId,
+                hiddenAt: null,
+                game: {
+                    status: { in: [client_1.GameStatus.ENDED, client_1.GameStatus.ENDED_UNOPENED, client_1.GameStatus.CANCELLED] },
+                    participants: { some: { gameUserId: opponentGameUserId } },
+                },
+            },
+            select: { gameId: true },
+        });
+        const gameIds = memberships.map((membership) => membership.gameId);
+        if (gameIds.length > 0) {
+            yield __1.prisma.gameParticipant.updateMany({
+                where: { gameUserId, gameId: { in: gameIds } },
+                data: { hiddenAt: new Date(), actionRequired: false },
+            });
+        }
+        return res.send((0, status_1.success)({ gameIds }));
+    });
+}
+exports.hideFinishedGamesWithOpponentRoute = hideFinishedGamesWithOpponentRoute;
 // Compatibility endpoints used by older prototype clients.
 function updateGameRoute(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -476,7 +612,7 @@ function updateGameRoute(req, res) {
         const action = Array.isArray(req.body.moves) ? req.body.moves[0] : null;
         req.body.move = { cell: Array.isArray(action) ? Number(action[0]) * 3 + Number(action[1]) : action };
         req.body.expectedVersion = (_a = req.body.expectedVersion) !== null && _a !== void 0 ? _a : 0;
-        req.body.requestId = (_b = req.body.requestId) !== null && _b !== void 0 ? _b : `legacy-${res.locals.user.id}-${req.body.gameId}-${req.body.expectedVersion}`;
+        req.body.requestId = (_b = req.body.requestId) !== null && _b !== void 0 ? _b : `legacy-${res.locals.gameUserId}-${req.body.gameId}-${req.body.expectedVersion}`;
         return makeMoveRoute(req, res);
     });
 }

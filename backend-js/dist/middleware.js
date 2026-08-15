@@ -12,10 +12,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.userFullContext = exports.userDetails = exports.authenticateToken = void 0;
+exports.userFullContext = exports.userDetails = exports.gamePrincipalDetails = exports.authenticateGameToken = exports.authenticateToken = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const _1 = require(".");
 const status_1 = require("./status");
+const gameIdentity_1 = require("./game/gameIdentity");
 const authenticatedUserSelect = {
     id: true,
     username: true,
@@ -50,6 +51,66 @@ function authenticateToken(req, res, next) {
     });
 }
 exports.authenticateToken = authenticateToken;
+/** Accepts either a normal Rainfrog account JWT or a restricted anonymous-game JWT. */
+function authenticateGameToken(req, res, next) {
+    const token = req.header("authorization");
+    const secret = process.env.JWT_SECRET;
+    if (!token || !secret)
+        return res.status(499).send();
+    try {
+        const decoded = jsonwebtoken_1.default.verify(token.replace(/^Bearer\s+/i, ""), secret);
+        if (decoded.kind === "ANONYMOUS") {
+            const gameUserId = Number(decoded.gameUserId);
+            if (!Number.isInteger(gameUserId) || gameUserId <= 0)
+                return res.status(499).send();
+            res.locals.anonymousGameUserId = gameUserId;
+            return next();
+        }
+        const userId = Number(decoded.id);
+        if (!Number.isInteger(userId) || userId <= 0)
+            return res.status(499).send();
+        res.locals.userId = userId;
+        return next();
+    }
+    catch (_a) {
+        return res.status(499).send();
+    }
+}
+exports.authenticateGameToken = authenticateGameToken;
+function gamePrincipalDetails(_req, res, next) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            if (res.locals.anonymousGameUserId) {
+                const gameUser = yield (0, gameIdentity_1.publicGameUser)(Number(res.locals.anonymousGameUserId));
+                if (!gameUser || !gameUser.anonymous)
+                    return res.status(499).send();
+                const principal = {
+                    kind: "ANONYMOUS",
+                    gameUserId: gameUser.id,
+                    accountUserId: null,
+                };
+                res.locals.gamePrincipal = principal;
+                res.locals.gameUserId = principal.gameUserId;
+                return next();
+            }
+            const accountId = Number(res.locals.userId);
+            if (!Number.isInteger(accountId) || accountId <= 0)
+                return res.status(499).send();
+            const user = yield _1.prisma.user.findUnique({ where: { id: accountId }, select: authenticatedUserSelect });
+            if (!user)
+                return res.status(499).send();
+            const gameUser = yield (0, gameIdentity_1.ensureAccountGameUser)(user.id);
+            res.locals.user = user;
+            res.locals.gameUserId = gameUser.id;
+            res.locals.gamePrincipal = (0, gameIdentity_1.principalFromAccount)(user, gameUser.id);
+            return next();
+        }
+        catch (error) {
+            return databaseUnavailable(res, error);
+        }
+    });
+}
+exports.gamePrincipalDetails = gamePrincipalDetails;
 function userDetails(req, res, next) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!res.locals.userId) {

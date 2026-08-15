@@ -9,6 +9,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "node --test -r ts-node/register src/game/gamestate/games/*.test.ts",
+    "smoke:link-game": "node scripts/link-game-smoke.js",
     "bench:eight-ball": "node -r ts-node/register src/game/gamestate/games/eightBallPhysicsV7.bench.ts",
     "db:migrate": "prisma migrate deploy"
   },
@@ -23,6 +24,7 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.11.25",
     "bcrypt": "^5.1.1",
+    "chess.js": "^1.4.0",
     "compression": "^1.8.1",
     "dotenv": "^16.4.5",
     "expo-server-sdk": "^7.1.0",

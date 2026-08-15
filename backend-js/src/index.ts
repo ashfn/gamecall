@@ -5,15 +5,17 @@ import compression from 'compression';
 import { PrismaClient, Role, User } from '@prisma/client'
 import { register, login, refreshToken, logout, upgradeLegacyRefreshToken } from './account/account';
 import dotenv from "dotenv"
-import { authenticateToken, userDetails, userFullContext } from './middleware';
+import { authenticateGameToken, authenticateToken, gamePrincipalDetails, userDetails, userFullContext } from './middleware';
 import { getAvatarRoute, searchProfilesRoute, setAvatarRoute, setDisplayNameRoute, setUsernameRoute, getProfileRoute } from './profile/profileRoute';
 import { acceptFriendRequestRoute, addFriendRequestRoute, denyFriendRequestRoute, getConnectionsRoute, getFriendRequestsRoute, removeFriendRoute } from './friends/friendRoutes';
 import { clientError, success } from './status';
-import { endGameRoute, finishGameRoute, getActiveGamesRoute, getGameRoute, makeMoveRoute, openTurnRoute, rematchGameRoute, sendGameRoute, updateGameRoute } from './game/gameRoutes';
+import { endGameRoute, finishGameRoute, getActiveGamesRoute, getGameRoute, hideFinishedGamesWithOpponentRoute, hideGameRoute, makeMoveRoute, openTurnRoute, rematchGameRoute, sendGameRoute, updateGameRoute } from './game/gameRoutes';
 import { getChatMessagesRoute, getUnreadChatCountRoute, getUnreadChatCountsRoute, sendChatMessageRoute } from './chat/chatRoutes';
 import { attachRealtime } from './realtime/realtime';
 import { registerPushTokenRoute, unregisterPushTokenRoute } from './notifications/notificationRoutes';
 import { getInboxActivityRoute } from './inbox/inboxRoutes';
+import { cancelLobbyRoute, createLinkLobbyRoute, getLobbyRoute, joinInviteRoute, listLobbiesRoute, previewInviteRoute, refreshAnonymousRoute, startLobbyRoute } from './game/gameLobbyRoutes';
+import { ensureAccountGameUser } from './game/gameIdentity';
 
 dotenv.config()
 
@@ -53,6 +55,22 @@ attachRealtime(server);
 
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({limit: '2mb'}));
+app.use((req, res, next) => {
+    const requestOrigin = req.header("origin")
+    const configuredOrigins = (process.env.WEB_APP_ORIGIN ?? "")
+        .split(",")
+        .map((origin) => origin.trim().replace(/\/$/, ""))
+        .filter(Boolean)
+    const localOrigin = requestOrigin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(requestOrigin)
+    if (requestOrigin && (localOrigin || configuredOrigins.includes(requestOrigin.replace(/\/$/, "")))) {
+        res.setHeader("Access-Control-Allow-Origin", requestOrigin)
+        res.setHeader("Vary", "Origin")
+        res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Rainfrog-Session-Upgrade")
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+    }
+    if (req.method === "OPTIONS") return res.status(204).send()
+    return next()
+})
 
 const port = process.env.PORT || 3000;
 // passworAd1
@@ -98,13 +116,14 @@ app.get('/debug', [authenticateToken, userDetails], (req: Request, res: Response
 
 app.get('/account', [authenticateToken, userDetails], (req: Request, res: Response) => {
     const user: User = res.locals.user
-    res.send(JSON.stringify(success({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        displayName: user.displayName,
-        accountCreated: user.accountCreated,
-    })))
+    ensureAccountGameUser(user.id).then((gameUser) => res.send(JSON.stringify(success({
+            id: user.id,
+            gameUserId: gameUser.id,
+            username: user.username,
+            email: user.email,
+            displayName: user.displayName,
+            accountCreated: user.accountCreated,
+        }))))
 })
 
 app.post('/profile/:userId/avatar', [authenticateToken, userDetails], setAvatarRoute)
@@ -119,15 +138,26 @@ app.get('/connections', [authenticateToken, userDetails], getConnectionsRoute)
 app.post('/denyFriendRequest/:userId', [authenticateToken, userDetails], denyFriendRequestRoute)
 app.post('/acceptFriendRequest/:userId', [authenticateToken, userDetails], acceptFriendRequestRoute)
 app.post('/searchProfiles', [authenticateToken], searchProfilesRoute)
-app.post('/newGame', [authenticateToken, userDetails], sendGameRoute)
-app.get('/games/:gameId', [authenticateToken, userDetails], getGameRoute)
-app.post('/games/:gameId/open-turn', [authenticateToken, userDetails], openTurnRoute)
-app.post('/games/:gameId/moves', [authenticateToken, userDetails], makeMoveRoute)
-app.post('/games/:gameId/rematch', [authenticateToken, userDetails], rematchGameRoute)
-app.post('/endGame', [authenticateToken, userDetails], endGameRoute)
-app.post('/updateGame', [authenticateToken, userDetails], updateGameRoute)
-app.post('/finishGame', [authenticateToken, userDetails], finishGameRoute)
-app.get('/games', [authenticateToken, userDetails], getActiveGamesRoute)
+const gameAuth = [authenticateGameToken, gamePrincipalDetails]
+app.post('/newGame', gameAuth, sendGameRoute)
+app.get('/games/:gameId', gameAuth, getGameRoute)
+app.post('/games/:gameId/open-turn', gameAuth, openTurnRoute)
+app.post('/games/:gameId/moves', gameAuth, makeMoveRoute)
+app.post('/games/:gameId/rematch', gameAuth, rematchGameRoute)
+app.delete('/games/opponents/:opponentId', gameAuth, hideFinishedGamesWithOpponentRoute)
+app.delete('/games/:gameId', gameAuth, hideGameRoute)
+app.post('/endGame', gameAuth, endGameRoute)
+app.post('/updateGame', gameAuth, updateGameRoute)
+app.post('/finishGame', gameAuth, finishGameRoute)
+app.get('/games', gameAuth, getActiveGamesRoute)
+app.post('/game-lobbies', gameAuth, createLinkLobbyRoute)
+app.get('/game-lobbies', gameAuth, listLobbiesRoute)
+app.get('/game-lobbies/:gameId', gameAuth, getLobbyRoute)
+app.post('/game-lobbies/:gameId/start', gameAuth, startLobbyRoute)
+app.delete('/game-lobbies/:gameId', gameAuth, cancelLobbyRoute)
+app.get('/game-invites/:token', previewInviteRoute)
+app.post('/game-invites/:token/join', joinInviteRoute)
+app.post('/anonymous-games/refresh', refreshAnonymousRoute)
 app.get('/inbox/activity', [authenticateToken, userDetails], getInboxActivityRoute)
 app.get('/chats/unread-counts', [authenticateToken, userDetails], getUnreadChatCountsRoute)
 app.get('/chats/:userId/messages', [authenticateToken, userDetails], getChatMessagesRoute)

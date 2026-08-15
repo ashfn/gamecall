@@ -168,7 +168,7 @@ export async function getActiveGamesRoute(req: Request, res: Response) {
   const games = await prisma.game.findMany({
     where: {
       participants: {
-        some: { gameUserId },
+        some: { gameUserId, hiddenAt: null },
       },
       ...(opponentGameUser ? {
         AND: { participants: { some: { gameUserId: opponentGameUser.id } } },
@@ -235,6 +235,7 @@ async function createGame(accountUserId: number, senderGameUserId: number, targe
 
 export async function sendGameRoute(req: Request, res: Response) {
   const user: User = res.locals.user;
+  if (!user) return res.send(userError("Create a Rainfrog account to start games"));
   const senderGameUserId: number = res.locals.gameUserId;
   const targetId = parseId(req.body.user ?? req.body.opponentId);
   if (!targetId) return res.send(clientError("Choose a valid opponent"));
@@ -450,7 +451,7 @@ export async function makeMoveRoute(req: Request, res: Response) {
 }
 
 export async function rematchGameRoute(req: Request, res: Response) {
-  const user: User = res.locals.user;
+  const user: User | undefined = res.locals.user;
   const gameUserId: number = res.locals.gameUserId;
   const gameId = parseId(req.params.gameId);
   if (!gameId) return res.send(clientError("Invalid game id"));
@@ -459,25 +460,58 @@ export async function rematchGameRoute(req: Request, res: Response) {
   if (!original) return res.send(userError("Game not found"));
   const originalDefinition = getGameDefinition(original.type);
   if (!originalDefinition) return res.send(userError("This game is not installed"));
+  const requestedDefinition = req.body?.game === undefined
+    ? originalDefinition
+    : getGameDefinition(req.body.game);
+  if (!requestedDefinition) return res.send(userError("That game is not installed"));
   if (original.status === GameStatus.STARTED) return res.send(userError("Finish this game before starting a rematch"));
   const ids = await participantIds(original);
   if (ids.length !== 2) return res.send(userError("Start a new lobby to play this group again"));
   const targetGameUserId = ids.find((id) => id !== gameUserId)!;
-  const targetProfile = await publicGameUser(targetGameUserId);
-  if (!targetProfile?.accountId || !(await canPlayTogether(user.id, targetProfile.accountId))) return res.send(userError("You must still be friends to rematch"));
+  const [viewerProfile, targetProfile] = await Promise.all([
+    publicGameUser(gameUserId),
+    publicGameUser(targetGameUserId),
+  ]);
+  if (!viewerProfile || !targetProfile) return res.send(userError("Player not found"));
+  if (!viewerProfile.accountId && !targetProfile.accountId) {
+    return res.send(userError("A Rainfrog account is required to restart this game"));
+  }
+  if (viewerProfile.accountId && targetProfile.accountId
+    && !(await canPlayTogether(viewerProfile.accountId, targetProfile.accountId))) {
+    return res.send(userError("You must still be friends to play again"));
+  }
+  const creatorAccountId = user?.id
+    ?? viewerProfile.accountId
+    ?? targetProfile.accountId
+    ?? original.createdByAccountId;
+  if (!creatorAccountId) return res.send(userError("A Rainfrog account is required to restart this game"));
 
   const existing = await prisma.game.findUnique({ where: { rematchOf: original.id } });
   if (existing) return res.send(success(await toGameDto(existing, gameUserId)));
   try {
-    let settings: unknown = {};
-    try {
-      settings = JSON.parse(original.settingsJson);
-    } catch {
-      settings = {};
+    let settings: unknown = req.body?.settings;
+    if (req.body?.game === undefined) {
+      try {
+        settings = JSON.parse(original.settingsJson);
+      } catch {
+        settings = {};
+      }
     }
-    const game = await createGame(user.id, gameUserId, targetGameUserId, originalDefinition.type, settings, original.id);
+    const game = await createGame(
+      creatorAccountId,
+      gameUserId,
+      targetGameUserId,
+      requestedDefinition.type,
+      settings,
+      original.id,
+    );
     emitGameChanged(game);
-    void notifyGame("rematch", game, gameUserId, targetGameUserId);
+    void notifyGame(
+      requestedDefinition.type === originalDefinition.type ? "rematch" : "started",
+      game,
+      gameUserId,
+      targetGameUserId,
+    );
     return res.send(success(await toGameDto(game, gameUserId)));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -506,6 +540,55 @@ export async function endGameRoute(req: Request, res: Response) {
   await prisma.gameParticipant.updateMany({ where: { gameId: game.id }, data: { actionRequired: false } });
   void notifyGame("finished", updated, gameUserId, winner);
   return res.send(success(await toGameDto(updated, gameUserId)));
+}
+
+export async function hideGameRoute(req: Request, res: Response) {
+  const gameUserId: number = res.locals.gameUserId;
+  const gameId = parseId(req.params.gameId);
+  if (!gameId) return res.send(clientError("Invalid game id"));
+  const game = await findGameForPlayer(gameId, gameUserId);
+  if (!game) return res.send(userError("Game not found"));
+  if (game.status === GameStatus.STARTED) return res.send(userError("End this game before removing it"));
+
+  await prisma.gameParticipant.update({
+    where: { gameId_gameUserId: { gameId, gameUserId } },
+    data: { hiddenAt: new Date(), actionRequired: false },
+  });
+  return res.send(success({ gameId }));
+}
+
+export async function hideFinishedGamesWithOpponentRoute(req: Request, res: Response) {
+  const gameUserId: number = res.locals.gameUserId;
+  const opponentGameUserId = parseId(req.params.opponentId);
+  if (!opponentGameUserId || opponentGameUserId === gameUserId) {
+    return res.send(clientError("Invalid opponent id"));
+  }
+
+  const anonymousOpponent = await prisma.gameUser.findFirst({
+    where: { id: opponentGameUserId, accountId: null },
+    select: { id: true },
+  });
+  if (!anonymousOpponent) return res.send(userError("Online player not found"));
+
+  const memberships = await prisma.gameParticipant.findMany({
+    where: {
+      gameUserId,
+      hiddenAt: null,
+      game: {
+        status: { in: [GameStatus.ENDED, GameStatus.ENDED_UNOPENED, GameStatus.CANCELLED] },
+        participants: { some: { gameUserId: opponentGameUserId } },
+      },
+    },
+    select: { gameId: true },
+  });
+  const gameIds = memberships.map((membership) => membership.gameId);
+  if (gameIds.length > 0) {
+    await prisma.gameParticipant.updateMany({
+      where: { gameUserId, gameId: { in: gameIds } },
+      data: { hiddenAt: new Date(), actionRequired: false },
+    });
+  }
+  return res.send(success({ gameIds }));
 }
 
 // Compatibility endpoints used by older prototype clients.

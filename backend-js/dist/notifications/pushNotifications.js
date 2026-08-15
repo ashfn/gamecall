@@ -13,6 +13,7 @@ exports.notifyFriendRequest = exports.notifyMessage = exports.notifyGame = void 
 const expo_server_sdk_1 = require("expo-server-sdk");
 const __1 = require("..");
 const gameDefinition_1 = require("../game/gameDefinition");
+const gameIdentity_1 = require("../game/gameIdentity");
 const expo = new expo_server_sdk_1.Expo(process.env.EXPO_ACCESS_TOKEN
     ? { accessToken: process.env.EXPO_ACCESS_TOKEN }
     : undefined);
@@ -90,22 +91,19 @@ function defaultGameContent(event, gameName, actorName, winner, recipientId) {
 }
 function notifyGame(event, game, actorId, recipientId) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b;
+        var _a, _b, _c;
         try {
             const definition = (0, gameDefinition_1.getGameDefinition)(game.type);
             if (!definition || actorId === recipientId)
                 return;
-            const [actor, recipient] = yield Promise.all([
-                __1.prisma.user.findUnique({ where: { id: actorId }, select: { displayName: true, username: true } }),
-                __1.prisma.user.findUnique({ where: { id: recipientId }, select: { displayName: true, username: true } }),
-            ]);
-            if (!actor || !recipient)
+            const [actor, recipient] = yield Promise.all([(0, gameIdentity_1.publicGameUser)(actorId), (0, gameIdentity_1.publicGameUser)(recipientId)]);
+            if (!actor || !(recipient === null || recipient === void 0 ? void 0 : recipient.accountId))
                 return;
             let state = null;
             try {
                 state = definition.normalizeState(JSON.parse(game.gameStateJson));
             }
-            catch (_c) {
+            catch (_d) {
                 // A generic notification is still useful if an old stored state cannot be normalized.
             }
             const actorName = cleanName(actor.displayName, actor.username);
@@ -121,12 +119,12 @@ function notifyGame(event, game, actorId, recipientId) {
             };
             const base = defaultGameContent(event, definition.displayName, actorName, game.winner, recipientId);
             const content = (_b = (_a = definition.modifyNotification) === null || _a === void 0 ? void 0 : _a.call(definition, base, context)) !== null && _b !== void 0 ? _b : base;
-            yield deliver(recipientId, content, {
+            yield deliver(recipient.accountId, content, {
                 kind: "game",
                 gameId: game.id,
-                userId: actorId,
+                userId: (_c = actor.accountId) !== null && _c !== void 0 ? _c : actorId,
                 gameType: definition.type,
-                recipientId,
+                recipientId: recipient.accountId,
             }, `game-${game.id}`);
         }
         catch (error) {

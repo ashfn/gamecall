@@ -21,6 +21,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const language_1 = require("../language");
 const status_1 = require("../status");
 const validation_1 = require("./validation");
+const gameIdentity_1 = require("../game/gameIdentity");
 function createJwt(user) {
     var _a;
     const secret = process.env.JWT_SECRET;
@@ -200,16 +201,19 @@ function register(username, email, password) {
                 return (0, status_1.userError)(language_1.ENGLISH.USERNAME_TAKEN);
             }
         }
-        const user = yield __1.prisma.user.create({
-            data: {
-                username: username,
-                email: email,
-                password: hashedPassword,
-                displayName: username,
-                role: client_1.Role.USER,
-                // Avatars are optional in the MVP; the app renders an initial by default.
-            }
-        });
+        yield __1.prisma.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
+            const user = yield tx.user.create({
+                data: {
+                    username: username,
+                    email: email,
+                    password: hashedPassword,
+                    displayName: username,
+                    role: client_1.Role.USER,
+                    // Avatars are optional in the MVP; the app renders an initial by default.
+                }
+            });
+            yield (0, gameIdentity_1.ensureAccountGameUser)(user.id, tx);
+        }));
         return (0, status_1.success)();
     });
 }
@@ -245,6 +249,7 @@ function login(usernameOrEmail, password) {
         if (!match) {
             return (0, status_1.userError)(language_1.ENGLISH.INCORRECT_PASSWORD);
         }
+        yield (0, gameIdentity_1.ensureAccountGameUser)(account.id);
         const refreshToken = yield createRefreshSession(account);
         return (0, status_1.success)(refreshToken);
     });

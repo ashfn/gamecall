@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.wordDropTileForTest = exports.applyWordDropTurnTimeout = exports.applyWordDropMove = exports.viewWordDropState = exports.normalizeWordDropState = exports.createWordDropState = exports.normalizeWordDropSettings = exports.WORD_DROP_MINI_BONUSES = exports.WORD_DROP_REGULAR_BONUSES = exports.isWordDropWord = exports.WORD_DROP_DICTIONARY_SIZE = exports.WORD_DROP_RACK_SIZE = exports.WORD_DROP_MINI_BOARD_SIZE = exports.WORD_DROP_REGULAR_BOARD_SIZE = void 0;
+exports.wordDropTileForTest = exports.applyWordDropTurnTimeout = exports.applyWordDropMove = exports.viewWordDropState = exports.normalizeWordDropState = exports.createWordDropState = exports.createWordDropStateForPlayers = exports.normalizeWordDropSettings = exports.WORD_DROP_MINI_BONUSES = exports.WORD_DROP_REGULAR_BONUSES = exports.isWordDropWord = exports.WORD_DROP_DICTIONARY_SIZE = exports.WORD_DROP_RACK_SIZE = exports.WORD_DROP_MINI_BOARD_SIZE = exports.WORD_DROP_REGULAR_BOARD_SIZE = void 0;
 const enable1_json_1 = __importDefault(require("./data/enable1.json"));
 exports.WORD_DROP_REGULAR_BOARD_SIZE = 15;
 exports.WORD_DROP_MINI_BOARD_SIZE = 11;
@@ -112,27 +112,34 @@ function createBag(variant) {
 function drawTiles(bag, amount) {
     return bag.splice(Math.max(0, bag.length - amount), amount);
 }
-function createWordDropState(player1, player2, rawSettings) {
+function createWordDropStateForPlayers(players, rawSettings) {
+    if (players.length < 2 || players.length > 4 || new Set(players).size !== players.length
+        || players.some((player) => !Number.isInteger(player) || player <= 0)) {
+        throw new Error("Word Drop needs between 2 and 4 different players");
+    }
     const { variant } = normalizeWordDropSettings(rawSettings);
     const boardSize = boardSizeForVariant(variant);
     const bag = createBag(variant);
+    const racks = Object.fromEntries(players.map((player) => [player, drawTiles(bag, exports.WORD_DROP_RACK_SIZE)]));
     return {
         kind: "word-drop",
         variant,
         boardSize,
-        player1,
-        player2,
+        players: [...players],
+        player1: players[0],
+        player2: players[1],
         board: Array(boardSize * boardSize).fill(null),
-        racks: {
-            [player1]: drawTiles(bag, exports.WORD_DROP_RACK_SIZE),
-            [player2]: drawTiles(bag, exports.WORD_DROP_RACK_SIZE),
-        },
+        racks,
         bag,
-        scores: { [player1]: 0, [player2]: 0 },
+        scores: Object.fromEntries(players.map((player) => [player, 0])),
         turnNumber: 1,
         consecutivePasses: 0,
         lastPlay: null,
     };
+}
+exports.createWordDropStateForPlayers = createWordDropStateForPlayers;
+function createWordDropState(player1, player2, rawSettings) {
+    return createWordDropStateForPlayers([player1, player2], rawSettings);
 }
 exports.createWordDropState = createWordDropState;
 function normalizeWordDropState(raw) {
@@ -156,18 +163,23 @@ function normalizeWordDropState(raw) {
         throw new Error("Stored Word Drop settings are invalid");
     if (state.board.length !== boardSize * boardSize)
         throw new Error("Stored Word Drop board is invalid");
-    if (!state.racks || !Array.isArray(state.racks[String(state.player1)]) || !Array.isArray(state.racks[String(state.player2)])) {
+    const players = Array.isArray(state.players) ? state.players.map(Number) : [Number(state.player1), Number(state.player2)];
+    if (players.length < 2 || players.length > 4 || new Set(players).size !== players.length
+        || players.some((player) => !Number.isInteger(player) || player <= 0)) {
+        throw new Error("Stored Word Drop players are invalid");
+    }
+    if (!state.racks || players.some((player) => { var _a; return !Array.isArray((_a = state.racks) === null || _a === void 0 ? void 0 : _a[String(player)]); })) {
         throw new Error("Stored Word Drop racks are invalid");
     }
     if (!Array.isArray(state.bag) || !state.scores)
         throw new Error("Stored Word Drop bag is invalid");
-    return Object.assign(Object.assign({}, state), { variant, boardSize });
+    return Object.assign(Object.assign({}, state), { players, player1: players[0], player2: players[1], variant, boardSize });
 }
 exports.normalizeWordDropState = normalizeWordDropState;
 function viewWordDropState(raw, viewerId) {
     var _a, _b, _c;
     const state = normalizeWordDropState(raw);
-    if (viewerId !== state.player1 && viewerId !== state.player2)
+    if (!state.players.includes(viewerId))
         throw new Error("You are not a player in this game");
     const unseenLetterCounts = Object.fromEntries([
         ...REGULAR_LETTERS.map(([letter]) => [letter, 0]),
@@ -175,8 +187,7 @@ function viewWordDropState(raw, viewerId) {
     ]);
     const inventory = [
         ...state.board.filter((tile) => tile !== null),
-        ...state.racks[String(state.player1)],
-        ...state.racks[String(state.player2)],
+        ...state.players.flatMap((player) => state.racks[String(player)]),
         ...state.bag,
     ];
     for (const tile of inventory) {
@@ -197,14 +208,12 @@ function viewWordDropState(raw, viewerId) {
         kind: state.kind,
         variant: state.variant,
         boardSize: state.boardSize,
+        players: state.players,
         player1: state.player1,
         player2: state.player2,
         board: state.board,
         rack: state.racks[String(viewerId)],
-        rackCounts: {
-            [state.player1]: state.racks[String(state.player1)].length,
-            [state.player2]: state.racks[String(state.player2)].length,
-        },
+        rackCounts: Object.fromEntries(state.players.map((player) => [player, state.racks[String(player)].length])),
         bagCount: state.bag.length,
         unseenLetterCounts,
         scores: state.scores,
@@ -257,36 +266,39 @@ function scoreWord(cells, newCells, bonusByCell) {
     }
     return letters * wordMultiplier;
 }
-function otherPlayer(state, playerId) {
-    return playerId === state.player1 ? state.player2 : state.player1;
+function nextPlayerAfter(state, playerId) {
+    const index = state.players.indexOf(playerId);
+    if (index < 0)
+        throw new Error("You are not a player in this game");
+    return state.players[(index + 1) % state.players.length];
 }
-function determineWinner(scores, player1, player2) {
-    if (scores[String(player1)] === scores[String(player2)])
-        return -1;
-    return scores[String(player1)] > scores[String(player2)] ? player1 : player2;
+function determineWinner(scores, players) {
+    const best = Math.max(...players.map((player) => { var _a; return (_a = scores[String(player)]) !== null && _a !== void 0 ? _a : 0; }));
+    const winners = players.filter((player) => { var _a; return ((_a = scores[String(player)]) !== null && _a !== void 0 ? _a : 0) === best; });
+    return winners.length === 1 ? winners[0] : -1;
 }
 function finishRackScores(state) {
-    return {
-        [state.player1]: Math.max(0, state.scores[String(state.player1)] - state.racks[String(state.player1)].reduce((sum, tile) => sum + tile.points, 0)),
-        [state.player2]: Math.max(0, state.scores[String(state.player2)] - state.racks[String(state.player2)].reduce((sum, tile) => sum + tile.points, 0)),
-    };
+    return Object.fromEntries(state.players.map((player) => [
+        player,
+        Math.max(0, state.scores[String(player)] - state.racks[String(player)].reduce((sum, tile) => sum + tile.points, 0)),
+    ]));
 }
 function applyWordDropMove(raw, playerId, move) {
     const state = normalizeWordDropState(raw);
     const boardSize = state.boardSize;
     const centre = Math.floor(boardSize / 2);
     const bonusByCell = new Map(bonusesForVariant(state.variant).map((item) => [`${item.row}:${item.col}`, item.type]));
-    if (playerId !== state.player1 && playerId !== state.player2)
+    if (!state.players.includes(playerId))
         throw new Error("You are not a player in this game");
     if (!move || typeof move !== "object")
         throw new Error("Choose tiles to play");
     const value = move;
-    const nextPlayer = otherPlayer(state, playerId);
+    const nextPlayer = nextPlayerAfter(state, playerId);
     if (value.kind === "pass") {
         const consecutivePasses = state.consecutivePasses + 1;
         const passedState = Object.assign(Object.assign({}, state), { consecutivePasses, turnNumber: state.turnNumber + 1, lastPlay: { playerId, words: [], score: 0, placements: [], passed: true } });
-        return consecutivePasses >= 2
-            ? { state: passedState, winner: determineWinner(passedState.scores, state.player1, state.player2), nextPlayer: 0 }
+        return consecutivePasses >= state.players.length
+            ? { state: passedState, winner: determineWinner(passedState.scores, state.players), nextPlayer: 0 }
             : { state: passedState, winner: 0, nextPlayer };
     }
     if (value.kind !== "play" || !Array.isArray(value.placements) || value.placements.length < 1 || value.placements.length > exports.WORD_DROP_RACK_SIZE) {
@@ -381,7 +393,7 @@ function applyWordDropMove(raw, playerId, move) {
         bag, racks: Object.assign(Object.assign({}, state.racks), { [playerId]: remainingRack }), scores, turnNumber: state.turnNumber + 1, consecutivePasses: 0, lastPlay: { playerId, words: labels, score, placements, passed: false } });
     if (bag.length === 0 && remainingRack.length === 0) {
         updated.scores = finishRackScores(updated);
-        return { state: updated, winner: determineWinner(updated.scores, state.player1, state.player2), nextPlayer: 0 };
+        return { state: updated, winner: determineWinner(updated.scores, state.players), nextPlayer: 0 };
     }
     return { state: updated, winner: 0, nextPlayer };
 }

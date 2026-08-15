@@ -28,6 +28,8 @@ const chatRoutes_1 = require("./chat/chatRoutes");
 const realtime_1 = require("./realtime/realtime");
 const notificationRoutes_1 = require("./notifications/notificationRoutes");
 const inboxRoutes_1 = require("./inbox/inboxRoutes");
+const gameLobbyRoutes_1 = require("./game/gameLobbyRoutes");
+const gameIdentity_1 = require("./game/gameIdentity");
 dotenv_1.default.config();
 function configureDatabasePool() {
     var _a;
@@ -64,6 +66,24 @@ exports.server = server;
 (0, realtime_1.attachRealtime)(server);
 app.use((0, compression_1.default)({ threshold: 1024 }));
 app.use(express_1.default.json({ limit: '2mb' }));
+app.use((req, res, next) => {
+    var _a;
+    const requestOrigin = req.header("origin");
+    const configuredOrigins = ((_a = process.env.WEB_APP_ORIGIN) !== null && _a !== void 0 ? _a : "")
+        .split(",")
+        .map((origin) => origin.trim().replace(/\/$/, ""))
+        .filter(Boolean);
+    const localOrigin = requestOrigin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(requestOrigin);
+    if (requestOrigin && (localOrigin || configuredOrigins.includes(requestOrigin.replace(/\/$/, "")))) {
+        res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+        res.setHeader("Vary", "Origin");
+        res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Rainfrog-Session-Upgrade");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    }
+    if (req.method === "OPTIONS")
+        return res.status(204).send();
+    return next();
+});
 const port = process.env.PORT || 3000;
 // passworAd1
 app.get('/', (_req, res) => {
@@ -106,13 +126,14 @@ app.get('/debug', [middleware_1.authenticateToken, middleware_1.userDetails], (r
 });
 app.get('/account', [middleware_1.authenticateToken, middleware_1.userDetails], (req, res) => {
     const user = res.locals.user;
-    res.send(JSON.stringify((0, status_1.success)({
+    (0, gameIdentity_1.ensureAccountGameUser)(user.id).then((gameUser) => res.send(JSON.stringify((0, status_1.success)({
         id: user.id,
+        gameUserId: gameUser.id,
         username: user.username,
         email: user.email,
         displayName: user.displayName,
         accountCreated: user.accountCreated,
-    })));
+    }))));
 });
 app.post('/profile/:userId/avatar', [middleware_1.authenticateToken, middleware_1.userDetails], profileRoute_1.setAvatarRoute);
 app.get('/profile/:userId/', [middleware_1.authenticateToken], profileRoute_1.getProfileRoute);
@@ -126,15 +147,26 @@ app.get('/connections', [middleware_1.authenticateToken, middleware_1.userDetail
 app.post('/denyFriendRequest/:userId', [middleware_1.authenticateToken, middleware_1.userDetails], friendRoutes_1.denyFriendRequestRoute);
 app.post('/acceptFriendRequest/:userId', [middleware_1.authenticateToken, middleware_1.userDetails], friendRoutes_1.acceptFriendRequestRoute);
 app.post('/searchProfiles', [middleware_1.authenticateToken], profileRoute_1.searchProfilesRoute);
-app.post('/newGame', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.sendGameRoute);
-app.get('/games/:gameId', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.getGameRoute);
-app.post('/games/:gameId/open-turn', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.openTurnRoute);
-app.post('/games/:gameId/moves', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.makeMoveRoute);
-app.post('/games/:gameId/rematch', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.rematchGameRoute);
-app.post('/endGame', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.endGameRoute);
-app.post('/updateGame', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.updateGameRoute);
-app.post('/finishGame', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.finishGameRoute);
-app.get('/games', [middleware_1.authenticateToken, middleware_1.userDetails], gameRoutes_1.getActiveGamesRoute);
+const gameAuth = [middleware_1.authenticateGameToken, middleware_1.gamePrincipalDetails];
+app.post('/newGame', gameAuth, gameRoutes_1.sendGameRoute);
+app.get('/games/:gameId', gameAuth, gameRoutes_1.getGameRoute);
+app.post('/games/:gameId/open-turn', gameAuth, gameRoutes_1.openTurnRoute);
+app.post('/games/:gameId/moves', gameAuth, gameRoutes_1.makeMoveRoute);
+app.post('/games/:gameId/rematch', gameAuth, gameRoutes_1.rematchGameRoute);
+app.delete('/games/opponents/:opponentId', gameAuth, gameRoutes_1.hideFinishedGamesWithOpponentRoute);
+app.delete('/games/:gameId', gameAuth, gameRoutes_1.hideGameRoute);
+app.post('/endGame', gameAuth, gameRoutes_1.endGameRoute);
+app.post('/updateGame', gameAuth, gameRoutes_1.updateGameRoute);
+app.post('/finishGame', gameAuth, gameRoutes_1.finishGameRoute);
+app.get('/games', gameAuth, gameRoutes_1.getActiveGamesRoute);
+app.post('/game-lobbies', gameAuth, gameLobbyRoutes_1.createLinkLobbyRoute);
+app.get('/game-lobbies', gameAuth, gameLobbyRoutes_1.listLobbiesRoute);
+app.get('/game-lobbies/:gameId', gameAuth, gameLobbyRoutes_1.getLobbyRoute);
+app.post('/game-lobbies/:gameId/start', gameAuth, gameLobbyRoutes_1.startLobbyRoute);
+app.delete('/game-lobbies/:gameId', gameAuth, gameLobbyRoutes_1.cancelLobbyRoute);
+app.get('/game-invites/:token', gameLobbyRoutes_1.previewInviteRoute);
+app.post('/game-invites/:token/join', gameLobbyRoutes_1.joinInviteRoute);
+app.post('/anonymous-games/refresh', gameLobbyRoutes_1.refreshAnonymousRoute);
 app.get('/inbox/activity', [middleware_1.authenticateToken, middleware_1.userDetails], inboxRoutes_1.getInboxActivityRoute);
 app.get('/chats/unread-counts', [middleware_1.authenticateToken, middleware_1.userDetails], chatRoutes_1.getUnreadChatCountsRoute);
 app.get('/chats/:userId/messages', [middleware_1.authenticateToken, middleware_1.userDetails], chatRoutes_1.getChatMessagesRoute);

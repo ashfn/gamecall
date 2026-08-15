@@ -27,6 +27,19 @@ SELECT "id", 'ACCOUNT'::"GameUserKind", "id", "accountCreated", "lastOnline"
 FROM "User"
 ON CONFLICT ("id") DO NOTHING;
 
+-- Be defensive about prototype games whose original account was deleted. They
+-- still need a stable participant row for the foreign key and historical state.
+INSERT INTO "GameUser" ("id", "kind", "anonymousDisplayName")
+SELECT legacy."id", 'ANONYMOUS'::"GameUserKind", 'Former player'
+FROM (
+  SELECT "player1" AS "id" FROM "Game"
+  UNION
+  SELECT "player2" AS "id" FROM "Game"
+) legacy
+WHERE legacy."id" > 0
+  AND NOT EXISTS (SELECT 1 FROM "GameUser" existing WHERE existing."id" = legacy."id")
+ON CONFLICT ("id") DO NOTHING;
+
 -- Anonymous ids live in a distant range so future account ids can continue to
 -- mirror their User id during the compatibility window.
 SELECT setval(pg_get_serial_sequence('"GameUser"', 'id'), GREATEST(1000000000, COALESCE((SELECT MAX("id") FROM "GameUser"), 0) + 1), false);

@@ -45,7 +45,6 @@ function createEightBallState(player1, player2) {
 }
 exports.createEightBallState = createEightBallState;
 function normalizeEightBallState(raw) {
-    var _a, _b;
     if (!raw || typeof raw !== "object")
         throw new Error("Invalid 8 Ball state");
     const value = raw;
@@ -70,9 +69,8 @@ function normalizeEightBallState(raw) {
                 : eightBallPhysics_1.EIGHT_BALL_PHYSICS_VERSION;
     const storedPocketedBy = value.pocketedBy && typeof value.pocketedBy === "object" ? value.pocketedBy : null;
     const cleanPocketed = (playerId) => {
-        var _a;
-        const stored = storedPocketedBy === null || storedPocketedBy === void 0 ? void 0 : storedPocketedBy[String(playerId)];
-        const legacy = !storedPocketedBy && ((_a = value.lastShot) === null || _a === void 0 ? void 0 : _a.playerId) === playerId ? value.lastShot.pocketed : [];
+        const stored = storedPocketedBy?.[String(playerId)];
+        const legacy = !storedPocketedBy && value.lastShot?.playerId === playerId ? value.lastShot.pocketed : [];
         const source = Array.isArray(stored) ? stored : legacy;
         return [...new Set(source
                 .map((number) => Number(number))
@@ -86,9 +84,12 @@ function normalizeEightBallState(raw) {
         ? value.recentShots.filter((shot) => Boolean(shot && typeof shot === "object"))
         : [];
     const replaySource = storedRecentShots.length > 0 ? storedRecentShots : lastShot ? [lastShot] : [];
-    const recentShots = replaySource.slice(-16).map((shot, index, shots) => (Object.assign(Object.assign({}, shot), { shotNumber: Number.isInteger(shot.shotNumber)
+    const recentShots = replaySource.slice(-16).map((shot, index, shots) => ({
+        ...shot,
+        shotNumber: Number.isInteger(shot.shotNumber)
             ? shot.shotNumber
-            : Math.max(1, shotNumber - shots.length + index + 1) })));
+            : Math.max(1, shotNumber - shots.length + index + 1),
+    }));
     return {
         kind: "eight-ball",
         physicsVersion,
@@ -96,8 +97,8 @@ function normalizeEightBallState(raw) {
         player2,
         balls: balls.sort((left, right) => left.number - right.number),
         groups: {
-            [player1]: validGroup((_a = value.groups) === null || _a === void 0 ? void 0 : _a[String(player1)]),
-            [player2]: validGroup((_b = value.groups) === null || _b === void 0 ? void 0 : _b[String(player2)]),
+            [player1]: validGroup(value.groups?.[String(player1)]),
+            [player2]: validGroup(value.groups?.[String(player2)]),
         },
         pocketedBy: {
             [player1]: cleanPocketed(player1),
@@ -149,12 +150,11 @@ function findOpenSpot(balls, preferredY) {
     return { x: eightBallPhysics_1.EIGHT_BALL_TABLE_WIDTH / 2, y: eightBallPhysics_1.EIGHT_BALL_TABLE_HEIGHT / 2 };
 }
 function legalFirstTarget(state, playerId, firstHit) {
-    var _a;
     if (firstHit === null)
         return false;
     if (state.breakShot)
         return firstHit === 1;
-    const group = (_a = state.groups[String(playerId)]) !== null && _a !== void 0 ? _a : "OPEN";
+    const group = state.groups[String(playerId)] ?? "OPEN";
     if (group === "OPEN")
         return firstHit !== 8;
     if (remainingGroupBalls(state.balls, group).length === 0)
@@ -162,13 +162,12 @@ function legalFirstTarget(state, playerId, firstHit) {
     return (0, eightBallPhysics_1.eightBallNumberGroup)(firstHit) === group;
 }
 function applyEightBallMove(rawState, playerId, rawMove) {
-    var _a, _b;
     const state = normalizeEightBallState(rawState);
     if (playerId !== state.player1 && playerId !== state.player2)
         throw new Error("You are not in this game");
     const opponentId = otherPlayer(state, playerId);
     const move = parseShot(rawMove, state.physicsVersion);
-    const balls = state.balls.map((ball) => (Object.assign({}, ball)));
+    const balls = state.balls.map((ball) => ({ ...ball }));
     const cue = balls.find((ball) => ball.number === 0);
     if (state.breakShot && (move.cueX !== undefined || move.cueY !== undefined)) {
         if (move.cueX === undefined || move.cueY === undefined || !(0, eightBallPhysics_1.isEightBallBreakPlacementLegal)(balls, move.cueX, move.cueY)) {
@@ -189,7 +188,7 @@ function applyEightBallMove(rawState, playerId, rawMove) {
     else if (cue.pocketed) {
         throw new Error("The cue ball must be placed before shooting");
     }
-    const startBalls = balls.map((ball) => (Object.assign(Object.assign({}, ball), { vx: 0, vy: 0 })));
+    const startBalls = balls.map((ball) => ({ ...ball, vx: 0, vy: 0 }));
     const simulation = state.physicsVersion === eightBallPhysicsV9_1.EIGHT_BALL_V9_PHYSICS_VERSION
         ? (0, eightBallPhysicsV9_1.simulateEightBallShotV9)(balls, move)
         : state.physicsVersion === eightBallPhysicsV8_1.EIGHT_BALL_V8_PHYSICS_VERSION
@@ -222,21 +221,39 @@ function applyEightBallMove(rawState, playerId, rawMove) {
         if (!nextPocketedBy[playerId].includes(number))
             nextPocketedBy[playerId].push(number);
     }
-    const playerGroupBefore = (_a = state.groups[String(playerId)]) !== null && _a !== void 0 ? _a : "OPEN";
+    const playerGroupBefore = state.groups[String(playerId)] ?? "OPEN";
     const clearedBeforeShot = playerGroupBefore !== "OPEN" && remainingGroupBalls(state.balls, playerGroupBefore).length === 0;
     const completedShotNumber = state.shotNumber + 1;
-    const completedShot = (shotFoul) => (Object.assign(Object.assign({ playerId, shotNumber: completedShotNumber, physicsVersion: state.physicsVersion, startBalls, aimX: move.aimX, aimY: move.aimY }, (move.cueX !== undefined && move.cueY !== undefined ? { cueX: move.cueX, cueY: move.cueY } : {})), { power: move.power, firstHit: events.firstHit, pocketed: events.pocketed, foul: shotFoul }));
-    const appendRecentShot = (shot) => {
-        var _a;
-        return (((_a = state.recentShots[state.recentShots.length - 1]) === null || _a === void 0 ? void 0 : _a.playerId) === playerId
-            ? [...state.recentShots, shot].slice(-16)
-            : [shot]);
-    };
+    const completedShot = (shotFoul) => ({
+        playerId,
+        shotNumber: completedShotNumber,
+        physicsVersion: state.physicsVersion,
+        startBalls,
+        aimX: move.aimX,
+        aimY: move.aimY,
+        ...(move.cueX !== undefined && move.cueY !== undefined ? { cueX: move.cueX, cueY: move.cueY } : {}),
+        power: move.power,
+        firstHit: events.firstHit,
+        pocketed: events.pocketed,
+        foul: shotFoul,
+    });
+    const appendRecentShot = (shot) => (state.recentShots[state.recentShots.length - 1]?.playerId === playerId
+        ? [...state.recentShots, shot].slice(-16)
+        : [shot]);
     if (eightPocketed && !state.breakShot) {
         const legalEight = !foul && clearedBeforeShot && events.firstHit === 8;
-        const shot = completedShot(legalEight ? null : foul !== null && foul !== void 0 ? foul : "8 ball pocketed early");
+        const shot = completedShot(legalEight ? null : foul ?? "8 ball pocketed early");
         return {
-            state: Object.assign(Object.assign({}, state), { balls: simulation.balls, pocketedBy: nextPocketedBy, breakShot: false, ballInHandFor: null, shotNumber: completedShotNumber, lastShot: shot, recentShots: appendRecentShot(shot) }),
+            state: {
+                ...state,
+                balls: simulation.balls,
+                pocketedBy: nextPocketedBy,
+                breakShot: false,
+                ballInHandFor: null,
+                shotNumber: completedShotNumber,
+                lastShot: shot,
+                recentShots: appendRecentShot(shot),
+            },
             winner: legalEight ? playerId : opponentId,
             nextPlayer: 0,
         };
@@ -250,7 +267,7 @@ function applyEightBallMove(rawState, playerId, rawMove) {
         eight.vy = 0;
         eight.pocketed = false;
     }
-    const nextGroups = Object.assign({}, state.groups);
+    const nextGroups = { ...state.groups };
     if (!foul && !state.breakShot && playerGroupBefore === "OPEN") {
         const assignedNumber = events.pocketed.find((number) => (0, eightBallPhysics_1.eightBallNumberGroup)(number) !== "SPECIAL");
         if (assignedNumber !== undefined) {
@@ -259,13 +276,23 @@ function applyEightBallMove(rawState, playerId, rawMove) {
             nextGroups[String(opponentId)] = assigned === "SOLIDS" ? "STRIPES" : "SOLIDS";
         }
     }
-    const effectiveGroup = (_b = nextGroups[String(playerId)]) !== null && _b !== void 0 ? _b : "OPEN";
+    const effectiveGroup = nextGroups[String(playerId)] ?? "OPEN";
     const pocketedOwn = pocketedObjects.some((number) => effectiveGroup === "OPEN" || (0, eightBallPhysics_1.eightBallNumberGroup)(number) === effectiveGroup);
     const continueTurn = !foul && pocketedOwn;
     const nextPlayer = continueTurn ? playerId : opponentId;
     const shot = completedShot(foul);
     return {
-        state: Object.assign(Object.assign({}, state), { balls: simulation.balls, groups: nextGroups, pocketedBy: nextPocketedBy, breakShot: false, ballInHandFor: foul ? opponentId : null, shotNumber: completedShotNumber, lastShot: shot, recentShots: appendRecentShot(shot) }),
+        state: {
+            ...state,
+            balls: simulation.balls,
+            groups: nextGroups,
+            pocketedBy: nextPocketedBy,
+            breakShot: false,
+            ballInHandFor: foul ? opponentId : null,
+            shotNumber: completedShotNumber,
+            lastShot: shot,
+            recentShots: appendRecentShot(shot),
+        },
         winner: 0,
         nextPlayer,
     };

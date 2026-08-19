@@ -30,7 +30,14 @@ import {
   NumberDropState,
   viewNumberDropState,
 } from "./gamestate/games/NUMBER_DROP";
-import { applyChessMove, ChessState, createChessState, normalizeChessState } from "./gamestate/games/CHESS";
+import {
+  applyChessMove,
+  ChessState,
+  createChessState,
+  normalizeChessSettings,
+  normalizeChessState,
+  viewChessState,
+} from "./gamestate/games/CHESS";
 
 export interface AuthoritativeMoveResult {
   state: unknown;
@@ -107,10 +114,25 @@ const numberDropNotification: GameNotificationModifier = (notification, context)
 };
 
 const chessNotification: GameNotificationModifier = (notification, context) => {
-  if (context.event !== "turn" || !context.state || typeof context.state !== "object") return notification;
+  if (!context.state || typeof context.state !== "object") return notification;
   const state = context.state as ChessState;
+  if (context.event === "started" || context.event === "rematch") {
+    if (state.variant === "CHESS960") {
+      return { ...notification, body: `Chess960 position ${state.startIndex ?? "?"} is on the board.` };
+    }
+    if (state.variant === "FOG_OF_WAR") {
+      return { ...notification, body: "Fog of War chess is ready. Capture the king to win." };
+    }
+    return notification;
+  }
+  if (context.event !== "turn") return notification;
   const move = state.lastMove;
   if (!move) return notification;
+  // Under fog the notification is the one place the move could still leak, so
+  // it says only that a move happened.
+  if (state.variant === "FOG_OF_WAR") {
+    return { ...notification, body: `${context.actorName} moved. Your turn.` };
+  }
   return {
     ...notification,
     body: `${context.actorName} played ${move.san}.${state.inCheck ? " Check." : " Your move."}`,
@@ -164,9 +186,10 @@ const definitions: Record<GameType, GameDefinition> = {
   [GameType.CHESS]: {
     type: GameType.CHESS,
     displayName: "Chess",
-    normalizeSettings: () => ({}),
+    normalizeSettings: normalizeChessSettings,
     createState: createChessState,
     normalizeState: normalizeChessState,
+    viewState: viewChessState,
     applyMove: applyChessMove,
     modifyNotification: chessNotification,
   },

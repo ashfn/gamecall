@@ -1,6 +1,6 @@
 import { apiRequest } from "./api";
 import { prefix } from "./config";
-import { GameSession, GameSettingsByType, GameType } from "./types";
+import { GameSelection, GameSession, GameSettingsByType, GameType } from "./types";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -63,6 +63,10 @@ export function getCachedGame(viewerId: number, gameId: number): GameSession | n
   return gameCache.get(gameCacheKey(viewerId, gameId)) ?? null;
 }
 
+export function removeCachedGame(viewerId: number, gameId: number) {
+  gameCache.delete(gameCacheKey(viewerId, gameId));
+}
+
 export async function listGames(viewerId?: number, opponentId?: number): Promise<GameSession[]> {
   const query = opponentId ? `?opponentId=${encodeURIComponent(String(opponentId))}` : "";
   const games = await apiRequest<GameSession[]>(`${prefix}/games${query}`);
@@ -109,10 +113,11 @@ export function submitMove(
   }).then((updated) => viewerId ? cacheGame(viewerId, updated) : updated);
 }
 
-export function rematch(gameId: number, viewerId?: number): Promise<GameSession> {
+export function rematch(gameId: number, viewerId?: number, selection?: GameSelection): Promise<GameSession> {
   return apiRequest<GameSession>(`${prefix}/games/${gameId}/rematch`, {
     method: "POST",
     headers: jsonHeaders,
+    body: selection ? JSON.stringify({ game: selection.type, settings: selection.settings }) : undefined,
   }).then((updated) => viewerId ? cacheGame(viewerId, updated) : updated);
 }
 
@@ -122,4 +127,18 @@ export function resignGame(gameId: number, viewerId?: number): Promise<GameSessi
     headers: jsonHeaders,
     body: JSON.stringify({ gameId }),
   }).then((updated) => viewerId ? cacheGame(viewerId, updated) : updated);
+}
+
+export async function hideFinishedGame(gameId: number, viewerId?: number): Promise<void> {
+  await apiRequest<{ gameId: number }>(`${prefix}/games/${gameId}`, { method: "DELETE" });
+  if (viewerId) removeCachedGame(viewerId, gameId);
+}
+
+export async function hideFinishedGamesWithOpponent(opponentId: number, viewerId?: number): Promise<number[]> {
+  const hidden = await apiRequest<{ gameIds: number[] }>(
+    `${prefix}/games/opponents/${opponentId}`,
+    { method: "DELETE" },
+  );
+  if (viewerId) hidden.gameIds.forEach((gameId) => removeCachedGame(viewerId, gameId));
+  return hidden.gameIds;
 }

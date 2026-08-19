@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -72,94 +63,92 @@ function authenticateGameToken(req, res, next) {
         res.locals.userId = userId;
         return next();
     }
-    catch (_a) {
+    catch {
         return res.status(499).send();
     }
 }
 exports.authenticateGameToken = authenticateGameToken;
-function gamePrincipalDetails(_req, res, next) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            if (res.locals.anonymousGameUserId) {
-                const gameUser = yield (0, gameIdentity_1.publicGameUser)(Number(res.locals.anonymousGameUserId));
-                if (!gameUser || !gameUser.anonymous)
-                    return res.status(499).send();
-                const principal = {
-                    kind: "ANONYMOUS",
-                    gameUserId: gameUser.id,
-                    accountUserId: null,
-                };
-                res.locals.gamePrincipal = principal;
-                res.locals.gameUserId = principal.gameUserId;
-                return next();
-            }
-            const accountId = Number(res.locals.userId);
-            if (!Number.isInteger(accountId) || accountId <= 0)
+async function gamePrincipalDetails(_req, res, next) {
+    try {
+        if (res.locals.anonymousGameUserId) {
+            const gameUser = await (0, gameIdentity_1.publicGameUser)(Number(res.locals.anonymousGameUserId));
+            if (!gameUser || !gameUser.anonymous)
                 return res.status(499).send();
-            const user = yield _1.prisma.user.findUnique({ where: { id: accountId }, select: authenticatedUserSelect });
-            if (!user)
-                return res.status(499).send();
-            const gameUser = yield (0, gameIdentity_1.ensureAccountGameUser)(user.id);
-            res.locals.user = user;
-            res.locals.gameUserId = gameUser.id;
-            res.locals.gamePrincipal = (0, gameIdentity_1.principalFromAccount)(user, gameUser.id);
+            const principal = {
+                kind: "ANONYMOUS",
+                gameUserId: gameUser.id,
+                accountUserId: null,
+            };
+            res.locals.gamePrincipal = principal;
+            res.locals.gameUserId = principal.gameUserId;
             return next();
         }
-        catch (error) {
-            return databaseUnavailable(res, error);
-        }
-    });
+        const accountId = Number(res.locals.userId);
+        if (!Number.isInteger(accountId) || accountId <= 0)
+            return res.status(499).send();
+        const user = await _1.prisma.user.findUnique({ where: { id: accountId }, select: authenticatedUserSelect });
+        if (!user)
+            return res.status(499).send();
+        const gameUser = await (0, gameIdentity_1.ensureAccountGameUser)(user.id);
+        res.locals.user = user;
+        res.locals.gameUserId = gameUser.id;
+        res.locals.gamePrincipal = (0, gameIdentity_1.principalFromAccount)(user, gameUser.id);
+        return next();
+    }
+    catch (error) {
+        return databaseUnavailable(res, error);
+    }
 }
 exports.gamePrincipalDetails = gamePrincipalDetails;
-function userDetails(req, res, next) {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!res.locals.userId) {
-            console.error("UserDetails middleware used without previous authenticateToken middleware");
+async function userDetails(req, res, next) {
+    if (!res.locals.userId) {
+        console.error("UserDetails middleware used without previous authenticateToken middleware");
+        return res.status(499).send();
+    }
+    try {
+        const first = await _1.prisma.user.findUnique({
+            where: {
+                id: res.locals.userId
+            },
+            select: authenticatedUserSelect,
+        });
+        if (first == null) {
+            console.error("Supplied userId does not exist in database (Normally this happens when a user's account is deleted but their JWT is still valid");
             return res.status(499).send();
         }
-        try {
-            const first = yield _1.prisma.user.findUnique({
-                where: {
-                    id: res.locals.userId
-                },
-                select: authenticatedUserSelect,
-            });
-            if (first == null) {
-                console.error("Supplied userId does not exist in database (Normally this happens when a user's account is deleted but their JWT is still valid");
-                return res.status(499).send();
-            }
-            res.locals.user = first;
-            next();
-        }
-        catch (error) {
-            return databaseUnavailable(res, error);
-        }
-    });
+        res.locals.user = first;
+        next();
+    }
+    catch (error) {
+        return databaseUnavailable(res, error);
+    }
 }
 exports.userDetails = userDetails;
-function userFullContext(req, res, next) {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!res.locals.userId) {
-            console.error("UserDetails middleware used without previous authenticateToken middleware");
+async function userFullContext(req, res, next) {
+    if (!res.locals.userId) {
+        console.error("UserDetails middleware used without previous authenticateToken middleware");
+        return res.status(499).send();
+    }
+    try {
+        const first = await _1.prisma.user.findUnique({
+            where: {
+                id: res.locals.userId
+            },
+            select: {
+                ...authenticatedUserSelect,
+                requestsReceived: true,
+                requestsSent: true
+            }
+        });
+        if (first == null) {
+            console.error("Supplied userId does not exist in database (Normally this happens when a user's account is deleted but their JWT is still valid");
             return res.status(499).send();
         }
-        try {
-            const first = yield _1.prisma.user.findUnique({
-                where: {
-                    id: res.locals.userId
-                },
-                select: Object.assign(Object.assign({}, authenticatedUserSelect), { requestsReceived: true, requestsSent: true })
-            });
-            if (first == null) {
-                console.error("Supplied userId does not exist in database (Normally this happens when a user's account is deleted but their JWT is still valid");
-                return res.status(499).send();
-            }
-            res.locals.user = first;
-            next();
-        }
-        catch (error) {
-            return databaseUnavailable(res, error);
-        }
-    });
+        res.locals.user = first;
+        next();
+    }
+    catch (error) {
+        return databaseUnavailable(res, error);
+    }
 }
 exports.userFullContext = userFullContext;

@@ -227,7 +227,7 @@ function resolveCushionCollision(ball, segment) {
     return true;
 }
 function separateEightBallOverlaps(inputBalls) {
-    const balls = inputBalls.map((ball) => (Object.assign(Object.assign({}, ball), { vx: 0, vy: 0 }))).sort((left, right) => left.number - right.number);
+    const balls = inputBalls.map((ball) => ({ ...ball, vx: 0, vy: 0 })).sort((left, right) => left.number - right.number);
     const events = { firstHit: null, pocketed: [], cushionBalls: [], cueScratch: false };
     for (let pass = 0; pass < 20; pass += 1) {
         for (let leftIndex = 0; leftIndex < balls.length; leftIndex += 1) {
@@ -254,8 +254,7 @@ function applyFriction(ball) {
         ball.vy = 0;
 }
 function simulateEightBallShot(inputBalls, shot, options = {}) {
-    var _a;
-    const balls = inputBalls.map((ball) => (Object.assign(Object.assign({}, ball), { vx: 0, vy: 0 }))).sort((left, right) => left.number - right.number);
+    const balls = inputBalls.map((ball) => ({ ...ball, vx: 0, vy: 0 })).sort((left, right) => left.number - right.number);
     const cue = balls.find((ball) => ball.number === 0);
     if (!cue || cue.pocketed)
         throw new Error("Place the cue ball before shooting");
@@ -274,7 +273,7 @@ function simulateEightBallShot(inputBalls, shot, options = {}) {
     cue.vy = roundedDivide(aimY * speed, aimLength);
     const events = { firstHit: null, pocketed: [], cushionBalls: [], cueScratch: false };
     const cushionSet = new Set();
-    const captureEvery = Math.max(0, Math.trunc((_a = options.captureEvery) !== null && _a !== void 0 ? _a : 0));
+    const captureEvery = Math.max(0, Math.trunc(options.captureEvery ?? 0));
     const frames = captureEvery ? [captureFrame(balls, 0)] : undefined;
     let steps = 0;
     for (let step = 1; step <= exports.EIGHT_BALL_MAX_STEPS; step += 1) {

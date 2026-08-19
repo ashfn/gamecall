@@ -64,11 +64,18 @@ function prepareCushion(segment) {
         nx = -nx;
         ny = -ny;
     }
-    return Object.assign(Object.assign({}, segment), { dx,
+    return {
+        ...segment,
+        dx,
         dy,
         length,
         nx,
-        ny, minX: Math.min(segment.x1, segment.x2) - eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS, minY: Math.min(segment.y1, segment.y2) - eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS, maxX: Math.max(segment.x1, segment.x2) + eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS, maxY: Math.max(segment.y1, segment.y2) + eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS });
+        ny,
+        minX: Math.min(segment.x1, segment.x2) - eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS,
+        minY: Math.min(segment.y1, segment.y2) - eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS,
+        maxX: Math.max(segment.x1, segment.x2) + eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS,
+        maxY: Math.max(segment.y1, segment.y2) + eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS,
+    };
 }
 const PREPARED_CUSHIONS = eightBallPhysics_1.EIGHT_BALL_CUSHION_SEGMENTS.map(prepareCushion);
 const CUSHION_CAPS = (() => {
@@ -482,11 +489,19 @@ function captureFrame(state, timeSeconds) {
     const balls = new Array(state.count);
     for (let index = 0; index < state.count; index += 1) {
         const pocketIndex = state.sinkingPocket[index];
-        balls[index] = Object.assign({ number: state.numbers[index], x: state.x[index], y: state.y[index], vx: state.vx[index], vy: state.vy[index], pocketed: Boolean(state.pocketed[index]) }, (pocketIndex >= 0 ? {
-            pocketDepth: state.pocketDepth[index],
-            pocketIndex,
-            pocketLinerHit: Boolean(state.pocketLinerHit[index]),
-        } : {}));
+        balls[index] = {
+            number: state.numbers[index],
+            x: state.x[index],
+            y: state.y[index],
+            vx: state.vx[index],
+            vy: state.vy[index],
+            pocketed: Boolean(state.pocketed[index]),
+            ...(pocketIndex >= 0 ? {
+                pocketDepth: state.pocketDepth[index],
+                pocketIndex,
+                pocketLinerHit: Boolean(state.pocketLinerHit[index]),
+            } : {}),
+        };
     }
     return { timeSeconds, balls };
 }
@@ -552,7 +567,6 @@ function countEscapedBalls(state) {
     return escaped;
 }
 function simulateEightBallShotV8(inputBalls, shot, options = {}) {
-    var _a, _b, _c;
     const state = createState(inputBalls);
     const cueIndex = Array.from(state.numbers).findIndex((number) => number === 0);
     if (cueIndex < 0 || state.pocketed[cueIndex])
@@ -586,9 +600,9 @@ function simulateEightBallShotV8(inputBalls, shot, options = {}) {
         capturedFrames: 0,
     };
     const batch = createBatch();
-    const maxSeconds = Math.max(STEP_SECONDS, Math.min(60, (_a = options.maxSeconds) !== null && _a !== void 0 ? _a : exports.EIGHT_BALL_V8_MAX_SECONDS));
+    const maxSeconds = Math.max(STEP_SECONDS, Math.min(60, options.maxSeconds ?? exports.EIGHT_BALL_V8_MAX_SECONDS));
     const maxTicks = Math.ceil(maxSeconds * exports.EIGHT_BALL_V8_STEP_HZ);
-    const captureHz = Math.max(0, Math.min(exports.EIGHT_BALL_V8_STEP_HZ, Math.trunc((_b = options.captureHz) !== null && _b !== void 0 ? _b : 0)));
+    const captureHz = Math.max(0, Math.min(exports.EIGHT_BALL_V8_STEP_HZ, Math.trunc(options.captureHz ?? 0)));
     const captureEveryTicks = captureHz ? Math.max(1, Math.round(exports.EIGHT_BALL_V8_STEP_HZ / captureHz)) : 0;
     const frames = captureEveryTicks ? [captureFrame(state, 0)] : undefined;
     for (let tick = 1; tick <= maxTicks; tick += 1) {
@@ -630,7 +644,7 @@ function simulateEightBallShotV8(inputBalls, shot, options = {}) {
             break;
     }
     events.cushionBalls = [...cushionSet].sort((left, right) => left - right);
-    profile.capturedFrames = (_c = frames === null || frames === void 0 ? void 0 : frames.length) !== null && _c !== void 0 ? _c : 0;
+    profile.capturedFrames = frames?.length ?? 0;
     profile.escapedBalls = countEscapedBalls(state);
     return {
         balls: exportBalls(state),

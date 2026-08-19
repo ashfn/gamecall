@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -32,11 +23,10 @@ const gameLobbyRoutes_1 = require("./game/gameLobbyRoutes");
 const gameIdentity_1 = require("./game/gameIdentity");
 dotenv_1.default.config();
 function configureDatabasePool() {
-    var _a;
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl)
         return;
-    const configuredLimit = Number((_a = process.env.PRISMA_CONNECTION_LIMIT) !== null && _a !== void 0 ? _a : 4);
+    const configuredLimit = Number(process.env.PRISMA_CONNECTION_LIMIT ?? 4);
     const connectionLimit = Number.isInteger(configuredLimit) && configuredLimit > 0
         ? Math.min(configuredLimit, 20)
         : 4;
@@ -53,7 +43,7 @@ function configureDatabasePool() {
         process.env.DATABASE_URL = url.toString();
         console.log(`Database pool limited to ${url.searchParams.get("connection_limit")} connections`);
     }
-    catch (_b) {
+    catch {
         throw new Error("DATABASE_URL is not a valid PostgreSQL URL");
     }
 }
@@ -67,9 +57,8 @@ exports.server = server;
 app.use((0, compression_1.default)({ threshold: 1024 }));
 app.use(express_1.default.json({ limit: '2mb' }));
 app.use((req, res, next) => {
-    var _a;
     const requestOrigin = req.header("origin");
-    const configuredOrigins = ((_a = process.env.WEB_APP_ORIGIN) !== null && _a !== void 0 ? _a : "")
+    const configuredOrigins = (process.env.WEB_APP_ORIGIN ?? "")
         .split(",")
         .map((origin) => origin.trim().replace(/\/$/, ""))
         .filter(Boolean);
@@ -99,12 +88,12 @@ app.post('/login', (req, res) => {
         res.send(JSON.stringify(user));
     });
 });
-app.post('/refresh', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+app.post('/refresh', async (req, res) => {
     try {
         const suppliedToken = typeof req.body.refreshToken === "string" ? req.body.refreshToken : "";
-        const accessToken = yield (0, account_1.refreshToken)(suppliedToken);
+        const accessToken = await (0, account_1.refreshToken)(suppliedToken);
         if (accessToken.status === 1 && req.header("x-rainfrog-session-upgrade") === "1") {
-            const upgraded = yield (0, account_1.upgradeLegacyRefreshToken)(suppliedToken);
+            const upgraded = await (0, account_1.upgradeLegacyRefreshToken)(suppliedToken);
             if (upgraded)
                 res.setHeader("x-rainfrog-refresh-token", upgraded);
         }
@@ -114,7 +103,7 @@ app.post('/refresh', (req, res) => __awaiter(void 0, void 0, void 0, function* (
         console.error("Could not refresh session", error);
         res.status(503).send((0, status_1.clientError)("Rainfrog is temporarily unavailable"));
     }
-}));
+});
 app.get('/debug', [middleware_1.authenticateToken, middleware_1.userDetails], (req, res) => {
     const user = res.locals.user;
     if (user.role == client_1.Role.ADMIN) {

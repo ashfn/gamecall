@@ -19,6 +19,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
+import { PieceSymbol, Square } from "../../src/games/chessEngine";
+import { chessPosition, visibleSquares } from "../../src/games/chessRules";
 import { GamePicker } from "../../src/components/GamePicker";
 import { apiRequest } from "../../util/api";
 import { useAccountDetailsStore } from "../../util/auth";
@@ -29,7 +31,7 @@ import { beginOptimisticInboxActivity } from "../../util/inbox";
 import { cacheProfile } from "../../util/profileCache";
 import { getRealtimeSocket, GameChangedEvent } from "../../util/realtime";
 import { colors } from "../../util/theme";
-import { ChatMessage, EightBallGameSession, GameSession, NumberDropGameSession, TicTacToeGameSession, User, WordDropGameSession } from "../../util/types";
+import { ChatMessage, ChessGameSession, EightBallGameSession, GameSession, NumberDropGameSession, TicTacToeGameSession, User, WordDropGameSession } from "../../util/types";
 import { primaryWordDropWord } from "../../util/wordDrop";
 import { buildWordDropCellPath } from "../../src/games/wordDropGeometry";
 import { EIGHT_BALL_TABLE_HEIGHT, EIGHT_BALL_TABLE_WIDTH } from "../../src/games/eightBallPhysics";
@@ -196,23 +198,60 @@ function MiniNumberDrop({ game }: { game: NumberDropGameSession }) {
   );
 }
 
+function MiniChessBoard({ game }: { game: ChessGameSession }) {
+  // Fog games hand over a partial board (and sometimes no enemy king at all),
+  // which only the matching engine variant will load.
+  const position = useMemo(() => chessPosition(game.state), [game.state]);
+  const visible = useMemo(() => visibleSquares(game.state), [game.state]);
+  const pieceIcon: Record<PieceSymbol, string> = {
+    p: "chess-pawn", n: "chess-knight", b: "chess-bishop",
+    r: "chess-rook", q: "chess-queen", k: "chess-king",
+  };
+  return (
+    <View style={styles.chessMiniBoard}>
+      {Array.from({ length: 64 }, (_, index) => {
+        const file = String.fromCharCode(97 + index % 8);
+        const rank = 8 - Math.floor(index / 8);
+        const square = `${file}${rank}` as Square;
+        const piece = position.get(square);
+        const fogged = visible !== null && !visible.has(square);
+        return (
+          <View
+            key={index}
+            style={[
+              styles.chessMiniCell,
+              (Math.floor(index / 8) + index % 8) % 2 === 0 ? styles.chessMiniLight : styles.chessMiniDark,
+              fogged && styles.chessMiniFogged,
+            ]}
+          >
+            {piece && <FontAwesome5 name={pieceIcon[piece.type] as never} solid size={5.2} color={piece.color === "w" ? "#F7F3E8" : "#111815"} />}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function MiniGame({ game }: { game: GameSession }) {
   if (game.type === "TIC_TAC_TOE") return <MiniTicTacToeBoard game={game} />;
   if (game.type === "WORD_DROP") return <MiniWordDropBoard game={game} />;
   if (game.type === "EIGHT_BALL") return <MiniEightBallTable game={game} />;
+  if (game.type === "CHESS") return <MiniChessBoard game={game} />;
   return <MiniNumberDrop game={game} />;
 }
 
 function gameName(game: GameSession) {
   if (game.type === "WORD_DROP") return `Word Drop${game.state.variant === "MINI" ? " Mini" : game.state.variant === "TEST" ? " Test" : ""}`;
   if (game.type === "EIGHT_BALL") return "8 Ball";
-  return game.type === "NUMBER_DROP" ? "Number Drop" : "Tic Tac Toe";
+  if (game.type === "NUMBER_DROP") return "Number Drop";
+  return game.type === "CHESS" ? "Chess" : "Tic Tac Toe";
 }
 
 function gameProgress(game: GameSession) {
   if (game.type === "WORD_DROP") return `${Math.max(0, game.state.turnNumber - 1)} turns`;
   if (game.type === "EIGHT_BALL") return `${game.state.shotNumber} shots`;
   if (game.type === "NUMBER_DROP") return `Round ${game.state.currentRound}/${game.state.totalRounds}`;
+  if (game.type === "CHESS") return `${game.state.moves.length} moves`;
   return `${game.state.moveCount} moves`;
 }
 
@@ -775,6 +814,11 @@ const styles = StyleSheet.create({
   numberMiniTiles: { flexDirection: "row", gap: 1.5, marginTop: 4 },
   numberMiniTile: { flex: 1, height: 10, borderRadius: 2, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
   numberMiniTileText: { color: colors.background, fontSize: 4.8, fontWeight: "900" },
+  chessMiniBoard: { width: 62, height: 62, marginRight: 12, borderRadius: 4, overflow: "hidden", flexDirection: "row", flexWrap: "wrap" },
+  chessMiniCell: { width: 7.75, height: 7.75, alignItems: "center", justifyContent: "center" },
+  chessMiniLight: { backgroundColor: "#B7E5BA" },
+  chessMiniDark: { backgroundColor: "#477457" },
+  chessMiniFogged: { backgroundColor: "#C9D6E1" },
   emptyGameIcon: { width: 62, height: 62, marginRight: 12, alignItems: "center", justifyContent: "center" },
   emptyX: { position: "absolute", left: 8, top: 1, color: colors.green, fontSize: 36, fontWeight: "200" },
   emptyO: { position: "absolute", right: 6, bottom: 0, color: colors.text, fontSize: 31, fontWeight: "200" },

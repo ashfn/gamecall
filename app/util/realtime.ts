@@ -1,6 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { getAccessToken, refreshAccessToken } from "./auth";
-import { prefix } from "./config";
+import { realtimePrefix } from "./config";
 import { ChatMessage, GameStatus } from "./types";
 
 export interface GameChangedEvent {
@@ -21,8 +21,15 @@ let socket: Socket<ServerToClientEvents> | null = null;
 let socketPromise: Promise<Socket<ServerToClientEvents>> | null = null;
 
 async function buildSocket() {
-  const nextSocket: Socket<ServerToClientEvents> = io(prefix, {
-    auth: { token: await getAccessToken() },
+  let token: string;
+  try {
+    token = await getAccessToken();
+  } catch {
+    const anonymous = await import("./anonymousAuth");
+    token = await anonymous.getAnonymousAccessToken() ?? await anonymous.refreshAnonymousAccessToken();
+  }
+  const nextSocket: Socket<ServerToClientEvents> = io(realtimePrefix, {
+    auth: { token },
     autoConnect: false,
     reconnection: true,
     reconnectionDelay: 250,
@@ -36,8 +43,13 @@ async function buildSocket() {
     if (error.message !== "unauthorized" || refreshingSession) return;
     refreshingSession = true;
     try {
-      await refreshAccessToken();
-      nextSocket.auth = { token: await getAccessToken() };
+      try {
+        await refreshAccessToken();
+        nextSocket.auth = { token: await getAccessToken() };
+      } catch {
+        const anonymous = await import("./anonymousAuth");
+        nextSocket.auth = { token: await anonymous.refreshAnonymousAccessToken() };
+      }
       nextSocket.connect();
     } catch {
       // Authenticated HTTP calls will take the user back to login if the session expired.

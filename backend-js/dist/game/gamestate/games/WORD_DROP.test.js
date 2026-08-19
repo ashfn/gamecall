@@ -54,7 +54,6 @@ function stateWithRack(letters) {
     strict_1.default.equal("bag" in view, false);
 });
 (0, node_test_1.default)("creates the Mini variant with an 11 by 11 board and exactly 50 tiles", () => {
-    var _a, _b;
     const state = (0, WORD_DROP_1.createWordDropState)(1, 2, { variant: "MINI" });
     const inventory = [...state.racks["1"], ...state.racks["2"], ...state.bag];
     const bonuses = (0, WORD_DROP_1.viewWordDropState)(state, 1).bonuses;
@@ -80,8 +79,8 @@ function stateWithRack(letters) {
             { tileId: "mini-2", row: 5, col: 6 },
         ],
     });
-    strict_1.default.deepEqual((_a = result.state.lastPlay) === null || _a === void 0 ? void 0 : _a.words, ["CAT"]);
-    strict_1.default.equal((_b = result.state.board[5 * 11 + 5]) === null || _b === void 0 ? void 0 : _b.letter, "A");
+    strict_1.default.deepEqual(result.state.lastPlay?.words, ["CAT"]);
+    strict_1.default.equal(result.state.board[5 * 11 + 5]?.letter, "A");
 });
 (0, node_test_1.default)("creates the temporary Test variant with exactly six tiles left after dealing", () => {
     const state = (0, WORD_DROP_1.createWordDropState)(1, 2, { variant: "TEST" });
@@ -97,7 +96,6 @@ function stateWithRack(letters) {
     strict_1.default.deepEqual((0, WORD_DROP_1.viewWordDropState)(state, 1).bonuses, WORD_DROP_1.WORD_DROP_MINI_BONUSES);
 });
 (0, node_test_1.default)("accepts and scores a dictionary word crossing the centre", () => {
-    var _a, _b, _c;
     const state = stateWithRack(["C", "A", "T", "E", "R", "S", "N"]);
     const result = (0, WORD_DROP_1.applyWordDropMove)(state, 1, {
         kind: "play",
@@ -109,9 +107,9 @@ function stateWithRack(letters) {
     });
     strict_1.default.equal(result.winner, 0);
     strict_1.default.equal(result.nextPlayer, 2);
-    strict_1.default.deepEqual((_a = result.state.lastPlay) === null || _a === void 0 ? void 0 : _a.words, ["CAT"]);
-    strict_1.default.equal((_b = result.state.lastPlay) === null || _b === void 0 ? void 0 : _b.score, 5);
-    strict_1.default.equal((_c = result.state.board[7 * 15 + 7]) === null || _c === void 0 ? void 0 : _c.letter, "A");
+    strict_1.default.deepEqual(result.state.lastPlay?.words, ["CAT"]);
+    strict_1.default.equal(result.state.lastPlay?.score, 5);
+    strict_1.default.equal(result.state.board[7 * 15 + 7]?.letter, "A");
     strict_1.default.equal(result.state.racks["1"].length, 7);
 });
 (0, node_test_1.default)("rejects disconnected, gapped, and unknown words", () => {
@@ -134,7 +132,6 @@ function stateWithRack(letters) {
     }), /gaps/);
 });
 (0, node_test_1.default)("requires, applies, and zero-scores wildcard letter assignments", () => {
-    var _a, _b;
     const state = stateWithRack(["?", "A", "T", "E", "R", "S", "N"]);
     strict_1.default.throws(() => (0, WORD_DROP_1.applyWordDropMove)(state, 1, {
         kind: "play",
@@ -153,11 +150,11 @@ function stateWithRack(letters) {
         ],
     });
     const wildcard = result.state.board[7 * 15 + 6];
-    strict_1.default.equal(wildcard === null || wildcard === void 0 ? void 0 : wildcard.letter, "C");
-    strict_1.default.equal(wildcard === null || wildcard === void 0 ? void 0 : wildcard.points, 0);
-    strict_1.default.equal(wildcard === null || wildcard === void 0 ? void 0 : wildcard.wildcard, true);
-    strict_1.default.deepEqual((_a = result.state.lastPlay) === null || _a === void 0 ? void 0 : _a.words, ["CAT"]);
-    strict_1.default.equal((_b = result.state.lastPlay) === null || _b === void 0 ? void 0 : _b.score, 2);
+    strict_1.default.equal(wildcard?.letter, "C");
+    strict_1.default.equal(wildcard?.points, 0);
+    strict_1.default.equal(wildcard?.wildcard, true);
+    strict_1.default.deepEqual(result.state.lastPlay?.words, ["CAT"]);
+    strict_1.default.equal(result.state.lastPlay?.score, 2);
 });
 (0, node_test_1.default)("does not allow regular tiles to impersonate another letter", () => {
     const state = stateWithRack(["C", "A", "T", "E", "R", "S", "N"]);

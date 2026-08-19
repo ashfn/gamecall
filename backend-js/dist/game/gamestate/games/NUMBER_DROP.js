@@ -105,21 +105,20 @@ function buildNumberDropSolutions(numbers) {
     return solved;
 }
 function solveNumberDrop(numbers, target) {
-    var _a;
     const solved = buildNumberDropSolutions(numbers);
     let best = null;
     for (let mask = 1; mask < solved.length; mask += 1) {
         for (const candidate of solved[mask].values()) {
             const distance = Math.abs(candidate.value - target);
             const bestDistance = best ? Math.abs(best.value - target) : Number.POSITIVE_INFINITY;
-            if (distance < bestDistance || (distance === bestDistance && candidate.operations < ((_a = best === null || best === void 0 ? void 0 : best.operations) !== null && _a !== void 0 ? _a : Infinity))) {
+            if (distance < bestDistance || (distance === bestDistance && candidate.operations < (best?.operations ?? Infinity))) {
                 best = candidate;
             }
         }
     }
     if (!best)
         throw new Error("This puzzle has no legal answers");
-    return Object.assign(Object.assign({}, best), { distance: Math.abs(best.value - target) });
+    return { ...best, distance: Math.abs(best.value - target) };
 }
 exports.solveNumberDrop = solveNumberDrop;
 const hardTargetCache = new Map();
@@ -133,7 +132,7 @@ function hardTargets(numbers) {
         for (const solution of values.values()) {
             if (solution.value < 101 || solution.value > 999)
                 continue;
-            addSolvedValue(exactSolutions, Object.assign({}, solution));
+            addSolvedValue(exactSolutions, { ...solution });
         }
     }
     const targets = [...exactSolutions.values()]
@@ -149,7 +148,7 @@ function puzzleForPlayers(player1, player2) {
     if (candidates.length === 0)
         throw new Error("Could not generate a Number Drop puzzle");
     const candidate = candidates[Math.floor(Math.random() * candidates.length)];
-    return Object.assign({ numbers }, candidate);
+    return { numbers, ...candidate };
 }
 function createNumberDropState(player1, player2, rawSettings = {}) {
     const settings = normalizeNumberDropSettings(rawSettings);
@@ -173,11 +172,16 @@ function createNumberDropState(player1, player2, rawSettings = {}) {
 }
 exports.createNumberDropState = createNumberDropState;
 function normalizeNumberDropState(raw) {
-    var _a;
     if (!raw || typeof raw !== "object")
         throw new Error("Invalid Number Drop state");
     const candidate = raw;
-    const state = Object.assign(Object.assign({}, candidate), { totalRounds: candidate.totalRounds === 3 || candidate.totalRounds === 5 ? candidate.totalRounds : 1, currentRound: Number.isInteger(candidate.currentRound) && candidate.currentRound > 0 ? candidate.currentRound : 1, scores: (_a = candidate.scores) !== null && _a !== void 0 ? _a : { [candidate.player1]: 0, [candidate.player2]: 0 }, rounds: Array.isArray(candidate.rounds) ? candidate.rounds : [] });
+    const state = {
+        ...candidate,
+        totalRounds: candidate.totalRounds === 3 || candidate.totalRounds === 5 ? candidate.totalRounds : 1,
+        currentRound: Number.isInteger(candidate.currentRound) && candidate.currentRound > 0 ? candidate.currentRound : 1,
+        scores: candidate.scores ?? { [candidate.player1]: 0, [candidate.player2]: 0 },
+        rounds: Array.isArray(candidate.rounds) ? candidate.rounds : [],
+    };
     if (state.kind !== "number-drop" || !Number.isInteger(state.player1) || !Number.isInteger(state.player2))
         throw new Error("Invalid Number Drop players");
     if (!Array.isArray(state.numbers) || state.numbers.length !== 6 || state.numbers.some((number) => !Number.isSafeInteger(number) || number <= 0))
@@ -190,10 +194,17 @@ exports.normalizeNumberDropState = normalizeNumberDropState;
 function viewNumberDropState(raw, viewerId) {
     const state = normalizeNumberDropState(raw);
     const finished = Boolean(state.submissions[String(state.player1)] && state.submissions[String(state.player2)]);
-    return Object.assign(Object.assign({}, state), { submissions: {
+    return {
+        ...state,
+        submissions: {
             [state.player1]: finished || viewerId === state.player1 ? state.submissions[String(state.player1)] : null,
             [state.player2]: finished || viewerId === state.player2 ? state.submissions[String(state.player2)] : null,
-        }, bestValue: finished ? state.bestValue : 0, bestDistance: finished ? state.bestDistance : 0, bestExpression: finished ? state.bestExpression : "", minimumOperations: finished ? state.minimumOperations : 0 });
+        },
+        bestValue: finished ? state.bestValue : 0,
+        bestDistance: finished ? state.bestDistance : 0,
+        bestExpression: finished ? state.bestExpression : "",
+        minimumOperations: finished ? state.minimumOperations : 0,
+    };
 }
 exports.viewNumberDropState = viewNumberDropState;
 function evaluateNumberDropSubmission(numbers, steps, resultId) {
@@ -222,19 +233,22 @@ function evaluateNumberDropSubmission(numbers, steps, resultId) {
     const result = available.get(resultId);
     if (!result)
         throw new Error("Choose an available result to submit");
-    return Object.assign(Object.assign({}, result), { steps: normalizedSteps });
+    return { ...result, steps: normalizedSteps };
 }
 exports.evaluateNumberDropSubmission = evaluateNumberDropSubmission;
 function applyNumberDropSubmission(state, playerId, submission) {
-    var _a, _b;
-    const submissions = Object.assign(Object.assign({}, state.submissions), { [playerId]: submission });
+    const submissions = { ...state.submissions, [playerId]: submission };
     const opponentId = playerId === state.player1 ? state.player2 : state.player1;
     const opponentSubmission = submissions[String(opponentId)];
     if (!opponentSubmission)
-        return { state: Object.assign(Object.assign({}, state), { submissions }), winner: 0, nextPlayer: opponentId };
+        return { state: { ...state, submissions }, winner: 0, nextPlayer: opponentId };
     const player1Submission = submissions[String(state.player1)];
     const player2Submission = submissions[String(state.player2)];
-    const scores = Object.assign(Object.assign({}, state.scores), { [state.player1]: ((_a = state.scores[String(state.player1)]) !== null && _a !== void 0 ? _a : 0) + player1Submission.score, [state.player2]: ((_b = state.scores[String(state.player2)]) !== null && _b !== void 0 ? _b : 0) + player2Submission.score });
+    const scores = {
+        ...state.scores,
+        [state.player1]: (state.scores[String(state.player1)] ?? 0) + player1Submission.score,
+        [state.player2]: (state.scores[String(state.player2)] ?? 0) + player2Submission.score,
+    };
     const roundResult = {
         round: state.currentRound,
         numbers: state.numbers,
@@ -251,14 +265,25 @@ function applyNumberDropSubmission(state, playerId, submission) {
         const winner = scores[String(state.player1)] === scores[String(state.player2)]
             ? -1
             : scores[String(state.player1)] > scores[String(state.player2)] ? state.player1 : state.player2;
-        return { state: Object.assign(Object.assign({}, state), { submissions, scores, rounds }), winner, nextPlayer: 0 };
+        return { state: { ...state, submissions, scores, rounds }, winner, nextPlayer: 0 };
     }
     const nextRound = state.currentRound + 1;
     const puzzle = puzzleForPlayers(state.player1 + nextRound * 13, state.player2 + nextRound * 29);
     const nextPlayer = nextRound % 2 === 1 ? state.player1 : state.player2;
     return {
-        state: Object.assign(Object.assign({}, state), { currentRound: nextRound, numbers: puzzle.numbers, target: puzzle.target, submissions: { [state.player1]: null, [state.player2]: null }, bestValue: puzzle.solution.value, bestDistance: 0, bestExpression: puzzle.solution.expression, minimumOperations: puzzle.solution.operations, scores,
-            rounds }),
+        state: {
+            ...state,
+            currentRound: nextRound,
+            numbers: puzzle.numbers,
+            target: puzzle.target,
+            submissions: { [state.player1]: null, [state.player2]: null },
+            bestValue: puzzle.solution.value,
+            bestDistance: 0,
+            bestExpression: puzzle.solution.expression,
+            minimumOperations: puzzle.solution.operations,
+            scores,
+            rounds,
+        },
         winner: 0,
         nextPlayer,
     };

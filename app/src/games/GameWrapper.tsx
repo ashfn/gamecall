@@ -17,10 +17,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { prefix } from "../../util/config";
 import { cacheChatMessage, cacheChatPreview, getUnreadMessageCount } from "../../util/chat";
-import { cacheGame, getCachedGame, getGame, openTurn, rematch, resignGame, rollbackOptimisticGame, submitMove } from "../../util/games";
+import { cacheGame, getCachedGame, getGame, listGames, openTurn, rematch, resignGame, rollbackOptimisticGame, submitMove } from "../../util/games";
 import { GameChangedEvent, getRealtimeSocket } from "../../util/realtime";
 import { colors } from "../../util/theme";
-import type { ChatMessage, GameSession, User } from "../../util/types";
+import type { ChatMessage, GameSelection, GameSession, User } from "../../util/types";
+import { GamePicker } from "../components/GamePicker";
 import GameLoader, { getGameDefinition } from "./GameLoader";
 import type { GameMovePayload } from "./GameLoader";
 import { TurnCountdown, TurnStatus } from "./components/TurnBasedGameHeader";
@@ -29,6 +30,14 @@ interface PendingMove {
   move: GameMovePayload;
   expectedVersion: number;
   requestId: string;
+}
+
+function optimisticNextPlayer(game: GameSession, viewerId: number) {
+  if (game.type === "WORD_DROP" && game.state.players.length > 1) {
+    const currentIndex = game.state.players.indexOf(viewerId);
+    if (currentIndex >= 0) return game.state.players[(currentIndex + 1) % game.state.players.length];
+  }
+  return game.opponent.id;
 }
 
 function newRequestId(gameId: number, userId: number) {
@@ -49,6 +58,7 @@ export default function GameWrapper({
   const [loading, setLoading] = useState(game === null);
   const [sending, setSending] = useState(false);
   const [rematching, setRematching] = useState(false);
+  const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -84,13 +94,13 @@ export default function GameWrapper({
   }, [account.id]);
 
   const loadUnreadMessageCount = useCallback(async (friendId = gameRef.current?.opponent.id) => {
-    if (!friendId) return;
+    if (!friendId || account.anonymous || gameRef.current?.opponent.accountId === null) return;
     try {
       setUnreadMessageCount(await getUnreadMessageCount(friendId));
     } catch {
       // A transient badge failure should never prevent the game itself loading.
     }
-  }, []);
+  }, [account.anonymous]);
 
   const applyGame = useCallback((updated: GameSession, notify = false) => {
     const previous = gameRef.current;
@@ -102,8 +112,26 @@ export default function GameWrapper({
     if (beginsOpponentReplay) handlePresentationBusyChange(true);
     cacheGame(account.id, updated);
     cacheChatPreview(account.id, updated.opponent, updated);
-    gameRef.current = updated;
-    setGame(updated);
+
+    /*
+     * Loads come from focus, socket connect, resume, the offline poll and
+     * pull-to-refresh, and most of them return a game that has not moved on.
+     * Handing a fresh object down anyway re-renders the whole game and makes
+     * children re-run every effect keyed on state they parse out of it — which
+     * is how the pool table ended up re-committing all sixteen ball positions
+     * several times a minute.
+     */
+    const unchanged = previous
+      && previous.id === updated.id
+      && previous.version === updated.version
+      && previous.status === updated.status
+      && previous.winner === updated.winner
+      && previous.waitingOn === updated.waitingOn
+      && previous.turnDeadline === updated.turnDeadline;
+    if (!unchanged) {
+      gameRef.current = updated;
+      setGame(updated);
+    }
     setPendingMove(null);
     if (!previous || previous.opponent.id !== updated.opponent.id) {
       void loadUnreadMessageCount(updated.opponent.id);
@@ -147,11 +175,23 @@ export default function GameWrapper({
     }
   }, [account.id, applyGame, gameId]);
   const handleTimerExpire = useCallback(() => { void load(false, true); }, [load]);
+  const followRestart = useCallback(async () => {
+    if (gameRef.current?.status === "STARTED") return;
+    try {
+      const next = (await listGames(account.id)).find((candidate) => candidate.rematchOf === gameId);
+      if (!next) return;
+      const returnQuery = returnToChatId ? `?fromChat=${returnToChatId}` : "";
+      router.replace(`/game/${next.id}${returnQuery}`);
+    } catch {
+      // The finished game remains usable while offline; realtime or a later
+      // focus will discover the restarted game.
+    }
+  }, [account.id, gameId, returnToChatId]);
 
   useFocusEffect(useCallback(() => {
-    void load(!gameRef.current);
+    void load(!gameRef.current).then(followRestart);
     if (gameRef.current?.opponent.id) void loadUnreadMessageCount();
-  }, [load, loadUnreadMessageCount]));
+  }, [followRestart, load, loadUnreadMessageCount]));
   useFocusEffect(useCallback(() => {
     let active = true;
     let realtime: Awaited<ReturnType<typeof getRealtimeSocket>> | null = null;
@@ -160,7 +200,7 @@ export default function GameWrapper({
       // offline fallback instead of downloading full game state eight times a
       // minute while the socket is healthy.
       if (!realtime?.connected) {
-        void load();
+        void load().then(followRestart);
         void loadUnreadMessageCount();
       }
     }, 30000);
@@ -172,7 +212,7 @@ export default function GameWrapper({
         void load(false, true);
       }
     };
-    const onConnect = () => { void load(); };
+    const onConnect = () => { void load().then(followRestart); };
     const onChatMessage = (message: ChatMessage) => {
       if (message.senderId === gameRef.current?.opponent.id && message.recipientId === account.id) {
         cacheChatMessage(account.id, message.senderId, message);
@@ -201,7 +241,7 @@ export default function GameWrapper({
       realtime?.off("chat:message", onChatMessage);
       realtime?.off("connect", onConnect);
     };
-  }, [account.id, gameId, load, loadUnreadMessageCount, returnToChatId]));
+  }, [account.id, followRestart, gameId, load, loadUnreadMessageCount, returnToChatId]));
 
   useEffect(() => {
     const listener = AppState.addEventListener("change", (state) => {
@@ -218,7 +258,7 @@ export default function GameWrapper({
     setPendingMove(command);
     cacheGame(account.id, {
       ...current,
-      waitingOn: current.opponent.id,
+      waitingOn: optimisticNextPlayer(current, account.id),
       lastActivity: new Date().toISOString(),
     }, { optimistic: true });
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -261,6 +301,15 @@ export default function GameWrapper({
     }
   }
 
+  async function startChosenGame(selection: GameSelection) {
+    const current = gameRef.current;
+    if (!current) return;
+    const next = await rematch(current.id, account.id, selection);
+    setGamePickerOpen(false);
+    const returnQuery = returnToChatId ? `?fromChat=${returnToChatId}` : "";
+    router.replace(`/game/${next.id}${returnQuery}`);
+  }
+
   function confirmResign() {
     const current = gameRef.current;
     if (!current || current.status !== "STARTED") return;
@@ -290,11 +339,26 @@ export default function GameWrapper({
     ? `${definition?.name ?? "Word Drop"} · ${game.state.variant === "MINI" ? "Mini" : game.state.variant === "TEST" ? "Test" : "Regular"}`
     : game?.type === "NUMBER_DROP"
       ? `${definition?.name ?? "Number Drop"} · ${game.state.totalRounds} round${game.state.totalRounds === 1 ? "" : "s"}`
+    : game?.type === "CHESS" && game.state.variant !== "STANDARD"
+      ? `${definition?.name ?? "Chess"} · ${game.state.variant === "CHESS960" ? `960 · #${game.state.startIndex ?? "?"}` : "Fog of War"}`
     : definition?.name ?? game?.type ?? "Game";
   const statusText = useMemo(() => {
     if (!game) return "";
     if (presentationBusy) return "Shot in progress";
-    if (game.status === "STARTED") return isMyTurn ? "Your turn" : `${game.opponent.displayName}'s turn`;
+    if (game.status === "STARTED") {
+      const activePlayer = game.players.find((player) => player.id === game.waitingOn);
+      return isMyTurn ? "Your turn" : `${activePlayer?.displayName ?? "Another player"}'s turn`;
+    }
+    if (game.type === "CHESS" && game.state.resultReason === "KING_CAPTURED") {
+      return game.winner === account.id ? "You took the king!" : "Your king was taken";
+    }
+    if (game.type === "CHESS" && game.state.resultReason && game.state.resultReason !== "CHECKMATE") {
+      if (game.state.resultReason === "STALEMATE") return "Stalemate";
+      if (game.state.resultReason === "THREEFOLD_REPETITION") return "Draw by repetition";
+      if (game.state.resultReason === "FIFTY_MOVE_RULE") return "Draw by fifty-move rule";
+      if (game.state.resultReason === "INSUFFICIENT_MATERIAL") return "Draw · insufficient material";
+      return "Drawn!";
+    }
     if (game.winner === -1) return "Drawn!";
     return game.winner === account.id ? "You won!" : "You lost!";
   }, [account.id, game, isMyTurn, presentationBusy]);
@@ -336,22 +400,32 @@ export default function GameWrapper({
   const openChat = () => {
     cacheChatPreview(account.id, game.opponent, game);
     if (returnToChatId === game.opponent.id) router.back();
-    else router.replace(`/chat/${game.opponent.id}`);
+    else router.replace(`/chat/${game.opponent.accountId ?? game.opponent.id}`);
   };
+
+  const isDirectAccountGame = game.players.length === 2 && !account.anonymous && game.opponent.accountId !== null;
+  const headerTitle = game.players.length === 2 ? game.opponent.displayName : `${game.players.length} players`;
 
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right", "bottom"]}>
+      <GamePicker
+        friend={game.opponent}
+        visible={gamePickerOpen}
+        onClose={() => setGamePickerOpen(false)}
+        onChoose={startChosenGame}
+        submitLabel="Play"
+      />
       <View style={styles.header}>
         <BackButton />
         <View style={styles.opponent}>
           <View style={styles.opponentAvatar}>
             <Text style={styles.opponentInitial}>{game.opponent.displayName.slice(0, 1).toUpperCase()}</Text>
-            {!avatarFailed && <Image source={{ uri: `${prefix}/profile/${game.opponent.id}/avatar` }} style={styles.opponentImage} onError={() => setAvatarFailed(true)} />}
+            {!avatarFailed && game.opponent.accountId !== null && <Image source={{ uri: `${prefix}/profile/${game.opponent.accountId}/avatar` }} style={styles.opponentImage} onError={() => setAvatarFailed(true)} />}
           </View>
-          <Text style={styles.opponentName}>{game.opponent.displayName}</Text>
+          <Text style={styles.opponentName}>{headerTitle}</Text>
         </View>
         <View style={[styles.headerSide, styles.headerActions]}>
-          <Pressable accessibilityLabel={`Open chat with ${game.opponent.displayName}${unreadMessageCount ? `, ${unreadMessageCount} unread message${unreadMessageCount === 1 ? "" : "s"}` : ""}`} style={styles.headerAction} onPress={openChat}>
+          {isDirectAccountGame && <Pressable accessibilityLabel={`Open chat with ${game.opponent.displayName}${unreadMessageCount ? `, ${unreadMessageCount} unread message${unreadMessageCount === 1 ? "" : "s"}` : ""}`} style={styles.headerAction} onPress={openChat}>
             <View pointerEvents="none" style={styles.chatIconGraphic}>
               <FontAwesome5 name="comment" solid size={24} color={colors.green} style={styles.chatIconGlyph} />
               {unreadMessageCount > 0 && (
@@ -360,7 +434,7 @@ export default function GameWrapper({
                 </View>
               )}
             </View>
-          </Pressable>
+          </Pressable>}
           {game.status === "STARTED" && <Pressable style={styles.endButton} onPress={confirmResign}><AntDesign name="close" size={20} color="red" /></Pressable>}
         </View>
       </View>
@@ -368,7 +442,7 @@ export default function GameWrapper({
       {definition?.fullScreen ? (
         <View style={styles.fullContent}>
           <Text style={styles.gameName}>{gameLabel}</Text>
-          {game.type !== "WORD_DROP" && game.type !== "NUMBER_DROP" && <View style={styles.turnRow}>{turnContent}</View>}
+          {game.type !== "WORD_DROP" && game.type !== "NUMBER_DROP" && game.type !== "CHESS" && <View style={styles.turnRow}>{turnContent}</View>}
           {error && (
             <View style={styles.fullErrorRow}>
               <Text style={styles.error} numberOfLines={2}>{error}</Text>
@@ -385,9 +459,14 @@ export default function GameWrapper({
             resultIndicator={resultIndicator}
           />
           {isFinished && (
-            <Pressable disabled={rematching} style={styles.rematch} onPress={startRematch}>
-              {rematching ? <ActivityIndicator color={colors.background} /> : <Text style={styles.rematchText}>Play again</Text>}
-            </Pressable>
+            <View style={styles.finishedActions}>
+              <Pressable disabled={rematching} style={styles.rematch} onPress={startRematch}>
+                {rematching ? <ActivityIndicator color={colors.background} /> : <Text style={styles.rematchText}>Play again</Text>}
+              </Pressable>
+              <Pressable disabled={rematching} style={styles.chooseGame} onPress={() => setGamePickerOpen(true)}>
+                <Text style={styles.chooseGameText}>Choose game</Text>
+              </Pressable>
+            </View>
           )}
         </View>
       ) : (
@@ -410,9 +489,14 @@ export default function GameWrapper({
           )}
 
           {isFinished && (
-            <Pressable disabled={rematching} style={styles.rematch} onPress={startRematch}>
-              {rematching ? <ActivityIndicator color={colors.background} /> : <Text style={styles.rematchText}>Play again</Text>}
-            </Pressable>
+            <View style={styles.finishedActions}>
+              <Pressable disabled={rematching} style={styles.rematch} onPress={startRematch}>
+                {rematching ? <ActivityIndicator color={colors.background} /> : <Text style={styles.rematchText}>Play again</Text>}
+              </Pressable>
+              <Pressable disabled={rematching} style={styles.chooseGame} onPress={() => setGamePickerOpen(true)}>
+                <Text style={styles.chooseGameText}>Choose game</Text>
+              </Pressable>
+            </View>
           )}
         </ScrollView>
       )}
@@ -449,6 +533,9 @@ const styles = StyleSheet.create({
   fullErrorRow: { minHeight: 34, marginBottom: 6, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: "#2A1717", borderRadius: 6, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   error: { color: "#EF4444", textAlign: "center" },
   retry: { color: colors.green, textAlign: "center", marginTop: 8, fontWeight: "700" },
-  rematch: { alignSelf: "stretch", height: 54, marginTop: 22, marginHorizontal: 24, borderRadius: 8, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
+  finishedActions: { alignSelf: "stretch", marginTop: 22, marginHorizontal: 24, flexDirection: "row", gap: 9 },
+  rematch: { flex: 1, height: 54, borderRadius: 8, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
   rematchText: { color: colors.background, fontSize: 18, fontWeight: "700" },
+  chooseGame: { flex: 1, height: 54, borderRadius: 8, borderWidth: 1, borderColor: colors.green, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  chooseGameText: { color: colors.green, fontSize: 16, fontWeight: "700" },
 });

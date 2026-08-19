@@ -1,5 +1,8 @@
 export interface User {
   id: number;
+  gameUserId?: number;
+  accountId?: number | null;
+  anonymous?: boolean;
   username: string;
   email?: string;
   displayName: string;
@@ -64,6 +67,7 @@ export interface WordDropState {
   kind: "word-drop";
   variant: WordDropVariant;
   boardSize: number;
+  players: number[];
   player1: number;
   player2: number;
   board: Array<WordDropBoardTile | null>;
@@ -169,15 +173,77 @@ export interface NumberDropState {
   rounds: NumberDropRoundResult[];
 }
 
-export type GameStatus = "STARTED" | "ENDED" | "ENDED_UNOPENED" | "CANCELLED";
-export type GameType = "TIC_TAC_TOE" | "WORD_DROP" | "EIGHT_BALL" | "NUMBER_DROP";
+export type ChessColor = "w" | "b";
+export type ChessPieceSymbol = "p" | "n" | "b" | "r" | "q" | "k";
+export type ChessPromotionPiece = "q" | "r" | "b" | "n";
+export type ChessVariant = "STANDARD" | "CHESS960" | "FOG_OF_WAR";
+export type ChessResultReason =
+  | "CHECKMATE"
+  | "KING_CAPTURED"
+  | "STALEMATE"
+  | "THREEFOLD_REPETITION"
+  | "FIFTY_MOVE_RULE"
+  | "INSUFFICIENT_MATERIAL"
+  | "DRAW";
+
+export interface ChessSettings {
+  variant: ChessVariant;
+}
+
+/**
+ * A move as the server is willing to describe it to this player. Everything is
+ * filled in for standard and Chess960; under fog of war the parts the viewer
+ * did not witness arrive as null, and a move seen from neither end is `hidden`.
+ */
+export interface ChessMoveRecord {
+  from: string | null;
+  to: string | null;
+  san: string | null;
+  color: ChessColor;
+  piece: ChessPieceSymbol | null;
+  captured?: ChessPieceSymbol;
+  promotion?: ChessPieceSymbol;
+  castleKingTo?: string;
+  castleRookTo?: string;
+  hidden: boolean;
+}
+
+export interface ChessState {
+  kind: "chess";
+  variant: ChessVariant;
+  startFen: string;
+  /** Chess960 position number (0-959), null for the other variants. */
+  startIndex: number | null;
+  player1: number;
+  player2: number;
+  whitePlayer: number;
+  /** Under fog of war, the position with every unseen square emptied. */
+  fen: string;
+  /**
+   * 64 characters of '1' (seen) and '0' (fogged) ordered a8..h1, or null when
+   * the whole board is visible.
+   */
+  visible: string | null;
+  moves: ChessMoveRecord[];
+  lastMove: ChessMoveRecord | null;
+  inCheck: boolean;
+  resultReason: ChessResultReason | null;
+}
+
+export type GameStatus = "LOBBY" | "STARTED" | "ENDED" | "ENDED_UNOPENED" | "CANCELLED";
+export type GameType = "TIC_TAC_TOE" | "WORD_DROP" | "EIGHT_BALL" | "NUMBER_DROP" | "CHESS";
 
 export interface GameSettingsByType {
   TIC_TAC_TOE: Record<string, never>;
   WORD_DROP: WordDropSettings;
   EIGHT_BALL: Record<string, never>;
   NUMBER_DROP: NumberDropSettings;
+  CHESS: ChessSettings;
 }
+
+export type GameSelection = {
+  [TType in GameType]: { type: TType; settings: GameSettingsByType[TType] }
+}[GameType];
 
 interface BaseGameSession<TType extends GameType, TState, TSettings> {
   id: number;
@@ -196,13 +262,18 @@ interface BaseGameSession<TType extends GameType, TState, TSettings> {
   turnDeadline: string | null;
   state: TState;
   opponent: User;
+  players: User[];
+  viewerGameUserId: number;
+  minPlayers: number;
+  maxPlayers: number;
 }
 
 export type TicTacToeGameSession = BaseGameSession<"TIC_TAC_TOE", TicTacToeState, GameSettingsByType["TIC_TAC_TOE"]>;
 export type WordDropGameSession = BaseGameSession<"WORD_DROP", WordDropState, GameSettingsByType["WORD_DROP"]>;
 export type EightBallGameSession = BaseGameSession<"EIGHT_BALL", EightBallState, GameSettingsByType["EIGHT_BALL"]>;
 export type NumberDropGameSession = BaseGameSession<"NUMBER_DROP", NumberDropState, GameSettingsByType["NUMBER_DROP"]>;
-export type GameSession = TicTacToeGameSession | WordDropGameSession | EightBallGameSession | NumberDropGameSession;
+export type ChessGameSession = BaseGameSession<"CHESS", ChessState, GameSettingsByType["CHESS"]>;
+export type GameSession = TicTacToeGameSession | WordDropGameSession | EightBallGameSession | NumberDropGameSession | ChessGameSession;
 
 export interface ApiResult<T> {
   status: -1 | 0 | 1;
@@ -217,3 +288,18 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
 }
+
+type GameLobbyFor<TType extends GameType> = {
+  id: number;
+  type: TType;
+  status: "LOBBY";
+  settings: GameSettingsByType[TType];
+  minPlayers: number;
+  maxPlayers: number;
+  createdByAccountId: number;
+  createdAt: string;
+  lastActivity: string;
+  players: User[];
+};
+
+export type GameLobby = { [TType in GameType]: GameLobbyFor<TType> }[GameType];

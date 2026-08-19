@@ -3,9 +3,11 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   Image,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,7 +19,9 @@ import { apiRequest } from "../util/api";
 import { useAccountDetailsStore } from "../util/auth";
 import { cacheChatPreview, getUnreadMessageCounts } from "../util/chat";
 import { prefix } from "../util/config";
-import { cacheGame, getCachedGames, getGame, listGames, subscribeGameCache } from "../util/games";
+import { cacheGame, getCachedGames, getGame, hideFinishedGamesWithOpponent, listGames, rematch, resignGame, subscribeGameCache } from "../util/games";
+import { cancelGameLobby, listGameLobbies } from "../util/gameLobbies";
+import { gameDisplayName, gameIconName, gameLobbyDetail } from "../util/gameDisplay";
 import {
   cacheInboxActivity,
   getCachedInboxActivities,
@@ -28,7 +32,7 @@ import {
 import { getRealtimeSocket, GameChangedEvent } from "../util/realtime";
 import { colors } from "../util/theme";
 import { timeAgo } from "../util/time";
-import { ChatMessage, GameSession, User } from "../util/types";
+import { ChatMessage, GameLobby, GameSession, User } from "../util/types";
 import { GamePicker } from "../src/components/GamePicker";
 
 interface Connections {
@@ -38,9 +42,9 @@ interface Connections {
   friendProfiles?: User[];
 }
 
-function activeGameWith(friendId: number, games: GameSession[]) {
+function latestGameWith(friendId: number, games: GameSession[]) {
   return games
-    .filter((game) => game.opponent.id === friendId && game.status === "STARTED")
+    .filter((game) => game.opponent?.id === friendId)
     .reduce<GameSession | null>((latest, game) => {
       if (!latest) return game;
       return Date.parse(game.lastActivity) > Date.parse(latest.lastActivity) ? game : latest;
@@ -59,7 +63,8 @@ function interactionTime(interactionAt: string | undefined, game: GameSession | 
 function gameName(game: GameSession) {
   if (game.type === "WORD_DROP") return `Word Drop${game.state.variant === "MINI" ? " Mini" : game.state.variant === "TEST" ? " Test" : ""}`;
   if (game.type === "EIGHT_BALL") return "8 Ball";
-  return game.type === "NUMBER_DROP" ? "Number Drop" : "Tic Tac Toe";
+  if (game.type === "NUMBER_DROP") return "Number Drop";
+  return game.type === "CHESS" ? "Chess" : "Tic Tac Toe";
 }
 
 function friendGameStatus(game: GameSession | null, userId: number, now: number, interactionAt?: string) {
@@ -72,10 +77,11 @@ function friendGameStatus(game: GameSession | null, userId: number, now: number,
       ? { label: `${gameName(game)} · ${timeAgo(displayTimestamp, now)}`, active: true }
       : { label: `Sent ${gameName(game)} · ${timeAgo(displayTimestamp, now)}`, active: false };
   }
-  if (game.winner === -1) return { label: "Drawn · Tap for a rematch", active: false };
-  return game.winner === userId
-    ? { label: "You won · Tap for a rematch", active: false }
-    : { label: "You lost · Tap for a rematch", active: false };
+  const result = game.winner === -1 ? "Drawn" : game.winner === userId ? "You won" : "You lost";
+  return {
+    label: `${result} · Choose another game`,
+    active: false,
+  };
 }
 
 function Avatar({ user, size = 60 }: { user: User; size?: number }) {
@@ -83,7 +89,7 @@ function Avatar({ user, size = 60 }: { user: User; size?: number }) {
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
       <Text style={styles.avatarText}>{user.displayName.slice(0, 1).toUpperCase()}</Text>
-      {!failed && (
+      {!user.anonymous && !failed && (
         <Image
           source={{ uri: `${prefix}/profile/${user.id}/avatar` }}
           style={[StyleSheet.absoluteFillObject, { borderRadius: size / 2 }]}
@@ -101,8 +107,11 @@ function FriendRow({
   userId,
   now,
   onPress,
+  onChatPressIn,
   onChatPress,
   unreadCount,
+  canChat,
+  swipeAction,
 }: {
   friend: User;
   game: GameSession | null;
@@ -112,42 +121,109 @@ function FriendRow({
   onPress: () => void;
   onChatPress: () => void;
   unreadCount: number;
+  canChat: boolean;
+  onChatPressIn: () => void;
+  swipeAction: {
+    label: string;
+    icon: string;
+    destructive?: boolean;
+    onPress: () => void;
+  } | null;
 }) {
+  const actionWidth = 84;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const swipeOpen = useRef(false);
+  const swipeStart = useRef(0);
+  const settleSwipe = useCallback((open: boolean) => {
+    swipeOpen.current = open;
+    Animated.spring(translateX, {
+      toValue: open ? -actionWidth : 0,
+      speed: 28,
+      bounciness: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [translateX]);
+  const swipeResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_event, gesture) => Boolean(swipeAction)
+      && Math.abs(gesture.dx) > 8
+      && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+    onPanResponderGrant: () => {
+      swipeStart.current = swipeOpen.current ? -actionWidth : 0;
+      translateX.stopAnimation();
+    },
+    onPanResponderMove: (_event, gesture) => {
+      translateX.setValue(Math.max(-actionWidth, Math.min(0, swipeStart.current + gesture.dx)));
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      settleSwipe(swipeStart.current + gesture.dx < -actionWidth * 0.42);
+    },
+    onPanResponderTerminate: () => settleSwipe(swipeOpen.current),
+    onPanResponderTerminationRequest: () => false,
+  }), [settleSwipe, swipeAction, translateX]);
   const status = friendGameStatus(game, userId, now, interactionAt);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${friend.displayName}. ${status.label}`}
-      onPress={onPress}
-      style={({ pressed }) => [styles.friendRow, pressed && styles.friendRowPressed]}
-    >
-      <Avatar user={friend} />
-      <View style={styles.friendBody}>
-        <Text style={styles.friendName} numberOfLines={1}>{friend.displayName}</Text>
-        <Text style={[styles.friendStatus, status.active && styles.friendStatusActive]} numberOfLines={1}>
-          {status.label}
-        </Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Open chat with ${friend.displayName}${unreadCount ? `, ${unreadCount} unread message${unreadCount === 1 ? "" : "s"}` : ""}`}
-        hitSlop={8}
-        style={({ pressed }) => [styles.chatButton, pressed && styles.chatButtonPressed]}
-        onPress={(event) => {
-          event.stopPropagation();
-          onChatPress();
-        }}
-      >
-        <View pointerEvents="none" style={styles.chatIconGraphic}>
-          <FontAwesome5 name="comment" solid size={28} color={colors.green} style={styles.chatIconGlyph} />
-          {unreadCount > 0 && (
-            <View style={styles.unreadIconCountBody}>
-              <Text style={styles.unreadIconCount}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+    <View style={styles.swipeRow} {...(swipeAction ? swipeResponder.panHandlers : {})}>
+      {swipeAction && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={swipeAction.label}
+          style={({ pressed }) => [
+            styles.swipeAction,
+            swipeAction.destructive && styles.swipeActionDestructive,
+            pressed && styles.swipeActionPressed,
+          ]}
+          onPress={() => {
+            settleSwipe(false);
+            swipeAction.onPress();
+          }}
+        >
+          <FontAwesome5 name={swipeAction.icon as never} size={17} color={colors.text} />
+          <Text style={styles.swipeActionText}>{swipeAction.label}</Text>
+        </Pressable>
+      )}
+      <Animated.View style={[styles.swipeForeground, { transform: [{ translateX }] }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${friend.displayName}. ${status.label}`}
+          onPress={() => {
+            if (swipeOpen.current) settleSwipe(false);
+            else onPress();
+          }}
+          style={({ pressed }) => [styles.friendRow, pressed && styles.friendRowPressed]}
+        >
+          <Avatar user={friend} />
+          <View style={styles.friendBody}>
+            <Text style={styles.friendName} numberOfLines={1}>{friend.displayName}</Text>
+            <Text style={[styles.friendStatus, status.active && styles.friendStatusActive]} numberOfLines={1}>
+              {status.label}
+            </Text>
+          </View>
+          {canChat ? <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open chat with ${friend.displayName}${unreadCount ? `, ${unreadCount} unread message${unreadCount === 1 ? "" : "s"}` : ""}`}
+            hitSlop={8}
+            style={({ pressed }) => [styles.chatButton, pressed && styles.chatButtonPressed]}
+            onPressIn={(event) => {
+              event.stopPropagation();
+              onChatPressIn();
+            }}
+            onPress={(event) => {
+              event.stopPropagation();
+              onChatPress();
+            }}
+          >
+            <View pointerEvents="none" style={styles.chatIconGraphic}>
+              <FontAwesome5 name="comment" solid size={28} color={colors.green} style={styles.chatIconGlyph} />
+              {unreadCount > 0 && (
+                <View style={styles.unreadIconCountBody}>
+                  <Text style={styles.unreadIconCount}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                </View>
+              )}
             </View>
-          )}
-        </View>
-      </Pressable>
-    </Pressable>
+          </Pressable> : <View style={styles.rowChevron}><FontAwesome5 name="chevron-right" size={14} color={colors.muted} /></View>}
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -184,12 +260,15 @@ export default function HomeScreen() {
   const initialized = useAccountDetailsStore((state) => state.initialized);
   const [friends, setFriends] = useState<User[]>([]);
   const [games, setGames] = useState<GameSession[]>(() => account ? getCachedGames(account.id) : []);
+  const [lobbies, setLobbies] = useState<GameLobby[]>([]);
+  const [cancellingLobbyIds, setCancellingLobbyIds] = useState<Set<number>>(() => new Set());
   const [interactionByFriend, setInteractionByFriend] = useState<Record<string, string>>(
     () => account ? getCachedInboxActivities(account.id) : {},
   );
   const [requestCount, setRequestCount] = useState(0);
   const [unreadMessageCounts, setUnreadMessageCounts] = useState<Record<string, number>>({});
   const [selectedFriend, setSelectedFriend] = useState<User | null>(null);
+  const [selectedSourceGame, setSelectedSourceGame] = useState<GameSession | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,11 +288,12 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     if (!useAccountDetailsStore.getState().account) return;
     try {
-      const [connections, nextGames, nextUnreadMessageCounts, nextInboxActivities] = await Promise.all([
+      const [connections, nextGames, nextUnreadMessageCounts, nextInboxActivities, nextLobbies] = await Promise.all([
         apiRequest<Connections>(`${prefix}/connections?profiles=1`),
         listGames(useAccountDetailsStore.getState().account?.id),
         getUnreadMessageCounts(),
         listInboxActivities().catch(() => ({})),
+        listGameLobbies().catch(() => []),
       ]);
       const profiles = connections.friendProfiles ?? [];
       setFriends(profiles.filter(Boolean));
@@ -221,6 +301,7 @@ export default function HomeScreen() {
       setInteractionByFriend(mergeInboxActivities(useAccountDetailsStore.getState().account!.id, nextInboxActivities));
       setRequestCount(connections.requestsReceived.length);
       setUnreadMessageCounts(nextUnreadMessageCounts);
+      setLobbies(nextLobbies);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not refresh your friends");
@@ -299,8 +380,16 @@ export default function HomeScreen() {
     let active = true;
     let realtime: Awaited<ReturnType<typeof getRealtimeSocket>> | null = null;
     const onGameChanged = (change: GameChangedEvent) => {
-      if (!change.playerIds.includes(account.id)) return;
-      const friendId = change.playerIds[0] === account.id ? change.playerIds[1] : change.playerIds[0];
+      const viewerGameUserId = account.gameUserId ?? account.id;
+      if (!change.playerIds.includes(viewerGameUserId)) return;
+      if (change.status === "LOBBY") {
+        void listGameLobbies().then(setLobbies).catch(() => undefined);
+        return;
+      }
+      setLobbies((current) => current.filter((lobby) => lobby.id !== change.gameId));
+      if (change.status === "CANCELLED") return;
+      const friendId = change.playerIds.find((id) => id !== viewerGameUserId);
+      if (!friendId) return;
       cacheInboxActivity(account.id, friendId, change.changedAt);
       // The socket already tells us exactly which game changed. Fetch that
       // game only; reloading friends, requests, unread counts and every other
@@ -332,15 +421,92 @@ export default function HomeScreen() {
     };
   }, [account, load]));
 
-  const rows = useMemo(() => friends.map((friend) => ({
-    friend,
-    game: activeGameWith(friend.id, games),
-    interactionAt: interactionByFriend[String(friend.id)],
-  })).sort((left, right) => {
+  const rows = useMemo(() => {
+    const people = new Map(friends.map((friend) => [friend.id, friend]));
+    games.forEach((game) => {
+      if (game.opponent?.id && !people.has(game.opponent.id)) people.set(game.opponent.id, game.opponent);
+    });
+    return [...people.values()].map((friend) => ({
+      friend,
+      game: latestGameWith(friend.id, games),
+      interactionAt: interactionByFriend[String(friend.id)],
+    })).sort((left, right) => {
     const activityDifference = interactionTime(right.interactionAt, right.game) - interactionTime(left.interactionAt, left.game);
     if (activityDifference !== 0) return activityDifference;
     return left.friend.displayName.localeCompare(right.friend.displayName);
-  }), [friends, games, interactionByFriend]);
+    });
+  }, [friends, games, interactionByFriend]);
+
+  const cancelLobby = useCallback((lobby: GameLobby) => {
+    Alert.alert(
+      "Cancel this game?",
+      "The link will stop working and everyone in the lobby will be removed.",
+      [
+        { text: "Keep game", style: "cancel" },
+        {
+          text: "Cancel game",
+          style: "destructive",
+          onPress: () => {
+            setLobbies((current) => current.filter((item) => item.id !== lobby.id));
+            setCancellingLobbyIds((current) => new Set(current).add(lobby.id));
+            void cancelGameLobby(lobby.id).catch((cancelError) => {
+              setLobbies((current) => current.some((item) => item.id === lobby.id) ? current : [lobby, ...current]);
+              setError(cancelError instanceof Error ? cancelError.message : "Could not cancel this game");
+            }).finally(() => {
+              setCancellingLobbyIds((current) => {
+                const next = new Set(current);
+                next.delete(lobby.id);
+                return next;
+              });
+            });
+          },
+        },
+      ],
+    );
+  }, []);
+
+  const endAnonymousGame = useCallback((game: GameSession) => {
+    Alert.alert("End this game?", "This counts as leaving the game and gives the other player the win.", [
+      { text: "Keep playing", style: "cancel" },
+      {
+        text: "End game",
+        style: "destructive",
+        onPress: () => {
+          void resignGame(game.id, account?.id).then((updated) => {
+            setGames((current) => current.map((item) => item.id === updated.id ? updated : item));
+          }).catch((endError) => {
+            setError(endError instanceof Error ? endError.message : "Could not end this game");
+          });
+        },
+      },
+    ]);
+  }, [account?.id]);
+
+  const removeAnonymousGames = useCallback((opponent: User) => {
+    Alert.alert("Remove this player?", "All finished games with this online player will disappear from your activity list.", [
+      { text: "Keep", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => {
+          let removedGames: GameSession[] = [];
+          setGames((current) => {
+            removedGames = current.filter((item) => (
+              item.opponent.id === opponent.id && item.status !== "STARTED"
+            ));
+            return current.filter((item) => !removedGames.some((removed) => removed.id === item.id));
+          });
+          void hideFinishedGamesWithOpponent(opponent.id, account?.id).catch((removeError) => {
+            setGames((current) => {
+              const presentIds = new Set(current.map((item) => item.id));
+              return [...removedGames.filter((item) => !presentIds.has(item.id)), ...current];
+            });
+            setError(removeError instanceof Error ? removeError.message : "Could not remove this game");
+          });
+        },
+      },
+    ]);
+  }, [account?.id]);
 
   if (!initialized) {
     return <View style={styles.center}><ActivityIndicator color={colors.green} size="large" /></View>;
@@ -370,10 +536,26 @@ export default function HomeScreen() {
       </SafeAreaView>
     );
   }
+  const viewerId = account.id;
 
   function openFriend(friend: User, game: GameSession | null) {
-    if (game) router.push(`/game/${game.id}`);
-    else setSelectedFriend(friend);
+    if (game?.status === "STARTED") router.push(`/game/${game.id}`);
+    else {
+      setSelectedFriend(friend);
+      setSelectedSourceGame(friend.anonymous ? game : null);
+    }
+  }
+
+  function closeGamePicker() {
+    setSelectedFriend(null);
+    setSelectedSourceGame(null);
+  }
+
+  function openStartedGame(started: GameSession) {
+    closeGamePicker();
+    cacheGame(viewerId, started);
+    setGames((current) => [started, ...current.filter((item) => item.id !== started.id)]);
+    router.push(`/game/${started.id}`);
   }
 
   return (
@@ -381,13 +563,12 @@ export default function HomeScreen() {
       <GamePicker
         friend={selectedFriend}
         visible={selectedFriend !== null}
-        onClose={() => setSelectedFriend(null)}
-        onStarted={(game) => {
-          setSelectedFriend(null);
-          cacheGame(account.id, game);
-          setGames((current) => [game, ...current]);
-          router.push(`/game/${game.id}`);
-        }}
+        onClose={closeGamePicker}
+        onChoose={selectedSourceGame ? async (choice) => {
+          openStartedGame(await rematch(selectedSourceGame.id, account.id, choice));
+        } : undefined}
+        onStarted={openStartedGame}
+        submitLabel={selectedSourceGame ? "Play" : undefined}
       />
       <View style={styles.header}>
         <Pressable accessibilityLabel="Friend requests" style={styles.headerColumn} onPress={() => router.push("/friends")}>
@@ -426,7 +607,32 @@ export default function HomeScreen() {
           <Animated.View style={[styles.content, { transform: [{ translateY: refreshHold }] }]}>
             {error && <Pressable style={styles.errorRow} onPress={load}><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable>}
             {!loadedOnce && !error && <ActivityIndicator style={styles.loading} color={colors.green} size="large" />}
-            {loadedOnce && rows.length === 0 && !error && (
+            {lobbies.map((lobby) => (
+              <Pressable key={`lobby-${lobby.id}`} style={({ pressed }) => [styles.lobbyRow, pressed && styles.friendRowPressed]} onPress={() => router.push(`/lobby/${lobby.id}`)}>
+                <View style={styles.lobbyIcon}><FontAwesome5 name={gameIconName(lobby.type)} size={18} color={colors.background} /></View>
+                <View style={styles.friendBody}>
+                  <Text style={styles.friendName}>{gameDisplayName(lobby.type)}</Text>
+                  <Text style={styles.lobbyStatus}>{gameLobbyDetail(lobby)} · {lobby.players.length} of {lobby.maxPlayers} joined · {lobby.players.length >= lobby.minPlayers ? "Ready to start" : "Waiting for players"}</Text>
+                </View>
+                {lobby.createdByAccountId === account.id ? (
+                  <Pressable
+                    accessibilityLabel="Cancel pending game"
+                    hitSlop={10}
+                    disabled={cancellingLobbyIds.has(lobby.id)}
+                    style={({ pressed }) => [styles.cancelLobbyButton, pressed && styles.chatButtonPressed]}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      cancelLobby(lobby);
+                    }}
+                  >
+                    {cancellingLobbyIds.has(lobby.id)
+                      ? <ActivityIndicator size="small" color={colors.muted} />
+                      : <FontAwesome5 name="times" size={16} color={colors.muted} />}
+                  </Pressable>
+                ) : <FontAwesome5 name="chevron-right" size={14} color={colors.muted} />}
+              </Pressable>
+            ))}
+            {loadedOnce && rows.length === 0 && lobbies.length === 0 && !error && (
               <Pressable style={styles.emptyState} onPress={() => router.push("/friends")}>
                 <Text style={styles.emptyTitle}>No friends yet</Text>
                 <Text style={styles.emptyText}>Tap here to find someone to play.</Text>
@@ -441,16 +647,38 @@ export default function HomeScreen() {
                 userId={account.id}
                 now={now}
                 unreadCount={unreadMessageCounts[String(friend.id)] ?? 0}
+                canChat={!friend.anonymous}
+                onChatPressIn={() => {
+                  cacheChatPreview(account.id, friend, game);
+                  router.prefetch(`/chat/${friend.id}`);
+                }}
+                swipeAction={friend.anonymous && game?.status === "STARTED" ? {
+                  label: "End game",
+                  icon: "flag",
+                  destructive: true,
+                  onPress: () => endAnonymousGame(game),
+                } : friend.anonymous && game ? {
+                  label: "Remove",
+                  icon: "trash-alt",
+                  destructive: true,
+                  onPress: () => removeAnonymousGames(friend),
+                } : null}
                 onPress={() => openFriend(friend, game)}
                 onChatPress={() => {
-                  cacheChatPreview(account.id, friend, game);
                   router.push(`/chat/${friend.id}`);
+                  // Accessibility activation may not emit onPressIn. The
+                  // navigation action is queued, so this still reaches the
+                  // destination cache before the chat screen reads it.
+                  cacheChatPreview(account.id, friend, game);
                 }}
               />
             ))}
           </Animated.View>
         </ScrollView>
         <BlackRefreshSpinner visible={refreshing || pulling} />
+        <Pressable accessibilityLabel="Create a game or group" style={({ pressed }) => [styles.composeButton, pressed && styles.composeButtonPressed]} onPress={() => router.push("/create-game")}>
+          <FontAwesome5 name="pen" size={19} color={colors.background} />
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -473,8 +701,17 @@ const styles = StyleSheet.create({
   friendScroll: { flex: 1, backgroundColor: colors.green },
   friendScrollContent: { flexGrow: 1 },
   content: { minHeight: "100%", paddingHorizontal: 4, paddingTop: 8, paddingBottom: 160, backgroundColor: colors.background },
+  swipeRow: { minHeight: 76, borderRadius: 6, overflow: "hidden", backgroundColor: colors.surface },
+  swipeForeground: { minHeight: 76, backgroundColor: colors.background },
+  swipeAction: { position: "absolute", top: 0, right: 0, bottom: 0, width: 84, backgroundColor: "#245C45", alignItems: "center", justifyContent: "center", gap: 5 },
+  swipeActionDestructive: { backgroundColor: "#702B2B" },
+  swipeActionPressed: { opacity: 0.76 },
+  swipeActionText: { color: colors.text, fontSize: 11, lineHeight: 13, fontWeight: "800", textAlign: "center" },
   friendRow: { minHeight: 76, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 8, flexDirection: "row", alignItems: "center", backgroundColor: colors.background },
   friendRowPressed: { backgroundColor: "#0F0F0F" },
+  lobbyRow: { minHeight: 72, marginHorizontal: 4, marginBottom: 4, borderRadius: 9, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface },
+  lobbyIcon: { width: 42, height: 42, borderRadius: 11, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
+  lobbyStatus: { color: colors.green, fontSize: 13, marginTop: 3 },
   avatar: { backgroundColor: colors.greenStrong, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarText: { color: colors.background, fontSize: 20, fontWeight: "800" },
   friendBody: { flex: 1, paddingLeft: 10 },
@@ -483,6 +720,8 @@ const styles = StyleSheet.create({
   friendStatusActive: { color: "#ABF0FF", fontWeight: "700" },
   chatButton: { position: "relative", width: 46, height: 46, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   chatButtonPressed: { backgroundColor: colors.surface },
+  rowChevron: { width: 46, height: 46, alignItems: "center", justifyContent: "center" },
+  cancelLobbyButton: { width: 44, height: 44, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   chatIconGraphic: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
   chatIconGlyph: { width: 28, height: 28, lineHeight: 28, textAlign: "center" },
   unreadIconCountBody: { position: "absolute", top: 1, left: 0, right: 0, height: 25, alignItems: "center", justifyContent: "center" },
@@ -493,6 +732,8 @@ const styles = StyleSheet.create({
   emptyState: { margin: 20, padding: 20, borderWidth: 1, borderColor: colors.green, borderRadius: 8, alignItems: "center" },
   emptyTitle: { color: colors.green, fontSize: 18 },
   emptyText: { color: colors.muted, fontSize: 14, marginTop: 6 },
+  composeButton: { position: "absolute", right: 18, bottom: 22, width: 57, height: 57, borderRadius: 29, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 9, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  composeButtonPressed: { transform: [{ scale: 0.95 }], opacity: 0.88 },
   welcome: { flex: 1, backgroundColor: colors.green, paddingHorizontal: 24 },
   welcomeBrand: { flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 28 },
   welcomeTitle: { color: colors.background, textAlign: "center", fontSize: 46, lineHeight: 52, fontWeight: "900", letterSpacing: -1.6 },

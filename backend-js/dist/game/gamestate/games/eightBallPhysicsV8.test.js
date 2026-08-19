@@ -9,7 +9,7 @@ const eightBallPhysics_1 = require("./eightBallPhysics");
 const eightBallPhysicsV8_1 = require("./eightBallPhysicsV8");
 function tableWithOnly(activeNumbers) {
     const active = new Set(activeNumbers);
-    return (0, eightBallPhysics_1.createEightBallRack)().map((ball) => (Object.assign(Object.assign({}, ball), { pocketed: !active.has(ball.number) })));
+    return (0, eightBallPhysics_1.createEightBallRack)().map((ball) => ({ ...ball, pocketed: !active.has(ball.number) }));
 }
 function ballByNumber(balls, number) {
     const ball = balls.find((candidate) => candidate.number === number);
@@ -96,7 +96,7 @@ function ballByNumber(balls, number) {
     }
 });
 (0, node_test_1.default)("v8 uses the same physical ball diameter as the production table", () => {
-    strict_1.default.equal(eightBallPhysicsV8_1.EIGHT_BALL_V8_BALL_DIAMETER_SQUARED, Math.pow((eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS * 2), 2));
+    strict_1.default.equal(eightBallPhysicsV8_1.EIGHT_BALL_V8_BALL_DIAMETER_SQUARED, (eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS * 2) ** 2);
 });
 (0, node_test_1.default)("v8 contains and separates a deterministic spread of arbitrary shots", () => {
     let seed = 0x51f15e;

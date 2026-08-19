@@ -1,12 +1,11 @@
 "use strict";
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_perf_hooks_1 = require("node:perf_hooks");
 const eightBallPhysics_1 = require("./eightBallPhysics");
 const eightBallPhysicsV7_1 = require("./eightBallPhysicsV7");
 function withOnly(activeNumbers) {
     const active = new Set(activeNumbers);
-    return (0, eightBallPhysics_1.createEightBallRack)().map((ball) => (Object.assign(Object.assign({}, ball), { pocketed: !active.has(ball.number) })));
+    return (0, eightBallPhysics_1.createEightBallRack)().map((ball) => ({ ...ball, pocketed: !active.has(ball.number) }));
 }
 function setBall(balls, number, x, y) {
     const ball = balls.find((candidate) => candidate.number === number);
@@ -40,7 +39,7 @@ function percentile(sorted, fraction) {
     return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1))];
 }
 function round(value, digits = 3) {
-    const factor = Math.pow(10, digits);
+    const factor = 10 ** digits;
     return Math.round(value * factor) / factor;
 }
 function timeCalls(iterations, call) {
@@ -101,11 +100,37 @@ function benchmarkScenario(scenario, iterations) {
     // execute the identical deterministic workload. Timing statistics exclude them.
     const profiledCalls = iterations + 5;
     return [
-        Object.assign(Object.assign({ engine: "v6 live", scenario: scenario.name, iterations }, timingFields(legacyTimes)), { ticksOrSteps: round(legacySteps / profiledCalls, 1), eventIterations: "—", eventLimitHits: "—", escapedBalls: "—", pairTests: "—", pairSolves: "—", cushionSolves: "—", contacts: "—" }),
-        Object.assign(Object.assign({ engine: "v7 CCD", scenario: scenario.name, iterations }, timingFields(v7Times)), { ticksOrSteps: profileAverage(aggregate, profiledCalls, "ticks"), eventIterations: profileAverage(aggregate, profiledCalls, "eventIterations"), eventLimitHits: profileAverage(aggregate, profiledCalls, "eventLimitHits"), escapedBalls: profileAverage(aggregate, profiledCalls, "escapedBalls"), pairTests: profileAverage(aggregate, profiledCalls, "pairCandidates"), pairSolves: profileAverage(aggregate, profiledCalls, "pairQuadratics"), cushionSolves: profileAverage(aggregate, profiledCalls, "cushionSolves"), contacts: round((aggregate.ballContacts + aggregate.cushionContacts) / profiledCalls, 1) }),
+        {
+            engine: "v6 live",
+            scenario: scenario.name,
+            iterations,
+            ...timingFields(legacyTimes),
+            ticksOrSteps: round(legacySteps / profiledCalls, 1),
+            eventIterations: "—",
+            eventLimitHits: "—",
+            escapedBalls: "—",
+            pairTests: "—",
+            pairSolves: "—",
+            cushionSolves: "—",
+            contacts: "—",
+        },
+        {
+            engine: "v7 CCD",
+            scenario: scenario.name,
+            iterations,
+            ...timingFields(v7Times),
+            ticksOrSteps: profileAverage(aggregate, profiledCalls, "ticks"),
+            eventIterations: profileAverage(aggregate, profiledCalls, "eventIterations"),
+            eventLimitHits: profileAverage(aggregate, profiledCalls, "eventLimitHits"),
+            escapedBalls: profileAverage(aggregate, profiledCalls, "escapedBalls"),
+            pairTests: profileAverage(aggregate, profiledCalls, "pairCandidates"),
+            pairSolves: profileAverage(aggregate, profiledCalls, "pairQuadratics"),
+            cushionSolves: profileAverage(aggregate, profiledCalls, "cushionSolves"),
+            contacts: round((aggregate.ballContacts + aggregate.cushionContacts) / profiledCalls, 1),
+        },
     ];
 }
-const requestedIterations = Number.parseInt((_a = process.env.EIGHT_BALL_BENCH_ITERATIONS) !== null && _a !== void 0 ? _a : "40", 10);
+const requestedIterations = Number.parseInt(process.env.EIGHT_BALL_BENCH_ITERATIONS ?? "40", 10);
 const iterations = Number.isFinite(requestedIterations) ? Math.max(1, requestedIterations) : 40;
 const rows = createScenarios().flatMap((scenario) => benchmarkScenario(scenario, iterations));
 console.log(`Eight Ball calculation benchmark (${iterations} timed shots per workload; 5 warmups)`);

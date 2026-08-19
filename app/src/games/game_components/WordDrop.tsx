@@ -570,6 +570,10 @@ function WordDropGame({
   const myScore = state.scores[String(account.id)] ?? 0;
   const opponentScore = state.scores[String(game.opponent.id)] ?? 0;
   const lastPlay = state.lastPlay;
+  const playerById = useMemo(() => new Map(game.players.map((player) => [player.id, player])), [game.players]);
+  const playerLabel = useCallback((playerId: number) => (
+    playerId === account.id ? "You" : playerById.get(playerId)?.displayName ?? "A player"
+  ), [account.id, playerById]);
   const finishPendingDrag = useCallback(() => setLiftedPreviewTileId(null), []);
   const openBag = useCallback(() => setBagOpen(true), []);
   const headerPlayer = useMemo(() => ({
@@ -584,6 +588,12 @@ function WordDropGame({
     score: opponentScore,
     active: !isMyTurn && game.status === "STARTED",
   }), [game.opponent, game.status, isMyTurn, opponentScore]);
+  const multiplayerScores = useMemo(() => game.players.map((player) => ({
+    user: player.id === account.id ? account : player,
+    label: player.id === account.id ? "YOU" : player.displayName.toUpperCase(),
+    score: state.scores[String(player.id)] ?? 0,
+    active: game.status === "STARTED" && game.waitingOn === player.id,
+  })), [account, game.players, game.status, game.waitingOn, state.scores]);
   const bagAccessory = useMemo(() => (
     <Pressable
       accessibilityRole="button"
@@ -606,6 +616,7 @@ function WordDropGame({
       <TurnBasedGameHeader
         player={headerPlayer}
         opponent={headerOpponent}
+        players={multiplayerScores.length > 2 ? multiplayerScores : undefined}
         turnIndicator={turnIndicator}
         resultIndicator={resultIndicator}
         centerAccessory={bagAccessory}
@@ -615,8 +626,8 @@ function WordDropGame({
         {lastPlay ? (
           <Text style={styles.lastPlay} numberOfLines={1}>
             {lastPlay.passed
-              ? `${lastPlay.playerId === account.id ? "You" : game.opponent.displayName} passed`
-              : `${lastPlay.playerId === account.id ? "You" : game.opponent.displayName} played ${primaryWordDropWord(lastPlay.words)} for ${lastPlay.score} point${lastPlay.score === 1 ? "" : "s"}`}
+              ? `${playerLabel(lastPlay.playerId)} passed`
+              : `${playerLabel(lastPlay.playerId)} played ${primaryWordDropWord(lastPlay.words)} for ${lastPlay.score} point${lastPlay.score === 1 ? "" : "s"}`}
           </Text>
         ) : <Text style={styles.lastPlayMuted}>Drop the first word across the centre</Text>}
       </View>
@@ -707,7 +718,7 @@ function WordDropGame({
               onPress={() => onMove({ kind: "play", placements })}
             >
               <Text style={[styles.playText, !canDropWord && styles.playTextWaiting]}>
-                {!isMyTurn ? "Their turn" : placements.length ? "Drop word" : "Place tiles"}
+                {!isMyTurn ? `${playerLabel(game.waitingOn)}'s turn` : placements.length ? "Drop word" : "Place tiles"}
               </Text>
             </Pressable>
           </View>
@@ -717,7 +728,10 @@ function WordDropGame({
       <TileBagSheet
         visible={bagOpen}
         bagCount={state.bagCount}
-        opponentRackCount={state.rackCounts[String(game.opponent.id)] ?? 0}
+        otherRackCount={game.players.reduce((total, player) => (
+          player.id === account.id ? total : total + (state.rackCounts[String(player.id)] ?? 0)
+        ), 0)}
+        otherPlayerCount={Math.max(1, game.players.length - 1)}
         letters={unseenLetters}
         onClose={() => setBagOpen(false)}
       />
@@ -747,13 +761,15 @@ function BagProgress({ count, size }: { count: number; size: number }) {
 function TileBagSheet({
   visible,
   bagCount,
-  opponentRackCount,
+  otherRackCount,
+  otherPlayerCount,
   letters,
   onClose,
 }: {
   visible: boolean;
   bagCount: number;
-  opponentRackCount: number;
+  otherRackCount: number;
+  otherPlayerCount: number;
   letters: Array<{ letter: string; count: number }>;
   onClose: () => void;
 }) {
@@ -769,7 +785,9 @@ function TileBagSheet({
           <View style={styles.largeBag}><BagProgress count={bagCount} size={88} /></View>
           <View style={styles.bagSummaryCopy}>
             <Text style={styles.bagSummaryTitle}>{bagCount} tile{bagCount === 1 ? "" : "s"} in the bag</Text>
-            <Text style={styles.bagSummarySub}>{opponentRackCount} in your opponent’s rack</Text>
+            <Text style={styles.bagSummarySub}>
+              {otherRackCount} in {otherPlayerCount === 1 ? "your opponent’s rack" : "the other players’ racks"}
+            </Text>
           </View>
         </View>
 

@@ -144,9 +144,15 @@ export async function getAccessToken(): Promise<string> {
 
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   let accessToken = await tokenGet(ACCESS_TOKEN);
+  let anonymous = false;
   if (!accessToken) {
-    await refreshAccessToken();
-    accessToken = await tokenGet(ACCESS_TOKEN);
+    const anonymousAuth = await import("./anonymousAuth");
+    accessToken = await anonymousAuth.getAnonymousAccessToken();
+    anonymous = Boolean(accessToken);
+    if (!accessToken) {
+      await refreshAccessToken();
+      accessToken = await tokenGet(ACCESS_TOKEN);
+    }
   }
 
   const makeRequest = (token: string | null) => fetch(url, {
@@ -157,8 +163,13 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   let response = await makeRequest(accessToken);
   if (response.status === 499) {
     try {
-      await refreshAccessToken();
-      response = await makeRequest(await tokenGet(ACCESS_TOKEN));
+      if (anonymous) {
+        const { refreshAnonymousAccessToken } = await import("./anonymousAuth");
+        response = await makeRequest(await refreshAnonymousAccessToken());
+      } else {
+        await refreshAccessToken();
+        response = await makeRequest(await tokenGet(ACCESS_TOKEN));
+      }
     } catch (error) {
       // A tunnel outage or a sleeping test backend must not destroy a valid
       // multi-week local session. Only a definitive server rejection logs out.

@@ -17,11 +17,10 @@ const ticTacToeNotification = (notification, context) => {
         return notification;
     const state = context.state;
     const mark = context.actorId === state.xPlayer ? "X" : "O";
-    return Object.assign(Object.assign({}, notification), { body: `${context.actorName} placed ${mark}. Your move.` });
+    return { ...notification, body: `${context.actorName} placed ${mark}. Your move.` };
 };
 function primaryWord(words) {
-    var _a;
-    return (_a = [...words].sort((left, right) => right.length - left.length || left.localeCompare(right))[0]) !== null && _a !== void 0 ? _a : "a word";
+    return [...words].sort((left, right) => right.length - left.length || left.localeCompare(right))[0] ?? "a word";
 }
 const wordDropNotification = (notification, context) => {
     if (!context.state || typeof context.state !== "object")
@@ -29,15 +28,18 @@ const wordDropNotification = (notification, context) => {
     const state = context.state;
     if (context.event === "started" || context.event === "rematch") {
         const variant = state.variant === "MINI" ? "Mini" : state.variant === "TEST" ? "Test" : "Regular";
-        return Object.assign(Object.assign({}, notification), { body: `${variant} Word Drop is ready to play.` });
+        return { ...notification, body: `${variant} Word Drop is ready to play.` };
     }
     if (context.event !== "turn" || !state.lastPlay)
         return notification;
     if (state.lastPlay.passed)
-        return Object.assign(Object.assign({}, notification), { body: `${context.actorName} passed. Your move.` });
+        return { ...notification, body: `${context.actorName} passed. Your move.` };
     const word = primaryWord(state.lastPlay.words);
     const points = state.lastPlay.score;
-    return Object.assign(Object.assign({}, notification), { body: `${context.actorName} played ${word} for ${points} point${points === 1 ? "" : "s"}.` });
+    return {
+        ...notification,
+        body: `${context.actorName} played ${word} for ${points} point${points === 1 ? "" : "s"}.`,
+    };
 };
 const eightBallNotification = (notification, context) => {
     if (context.event !== "turn" || !context.state || typeof context.state !== "object")
@@ -47,10 +49,11 @@ const eightBallNotification = (notification, context) => {
     if (!shot)
         return notification;
     if (shot.foul)
-        return Object.assign(Object.assign({}, notification), { body: `${context.actorName} fouled: ${shot.foul}. You have ball in hand.` });
+        return { ...notification, body: `${context.actorName} fouled: ${shot.foul}. You have ball in hand.` };
     const potted = shot.pocketed.filter((number) => number !== 0).length;
     return potted > 0
-        ? Object.assign(Object.assign({}, notification), { body: `${context.actorName} potted ${potted} ball${potted === 1 ? "" : "s"}. Your shot.` }) : Object.assign(Object.assign({}, notification), { body: `${context.actorName} took a shot. Your turn.` });
+        ? { ...notification, body: `${context.actorName} potted ${potted} ball${potted === 1 ? "" : "s"}. Your shot.` }
+        : { ...notification, body: `${context.actorName} took a shot. Your turn.` };
 };
 const numberDropNotification = (notification, context) => {
     if (context.event !== "turn" || !context.state || typeof context.state !== "object")
@@ -58,16 +61,36 @@ const numberDropNotification = (notification, context) => {
     const state = context.state;
     const roundHasSubmission = Object.values(state.submissions).some(Boolean);
     return roundHasSubmission
-        ? Object.assign(Object.assign({}, notification), { body: `${context.actorName} locked an answer. Your turn.` }) : Object.assign(Object.assign({}, notification), { body: `Round ${state.currentRound} of ${state.totalRounds} is ready.` });
+        ? { ...notification, body: `${context.actorName} locked an answer. Your turn.` }
+        : { ...notification, body: `Round ${state.currentRound} of ${state.totalRounds} is ready.` };
 };
 const chessNotification = (notification, context) => {
-    if (context.event !== "turn" || !context.state || typeof context.state !== "object")
+    if (!context.state || typeof context.state !== "object")
         return notification;
     const state = context.state;
+    if (context.event === "started" || context.event === "rematch") {
+        if (state.variant === "CHESS960") {
+            return { ...notification, body: `Chess960 position ${state.startIndex ?? "?"} is on the board.` };
+        }
+        if (state.variant === "FOG_OF_WAR") {
+            return { ...notification, body: "Fog of War chess is ready. Capture the king to win." };
+        }
+        return notification;
+    }
+    if (context.event !== "turn")
+        return notification;
     const move = state.lastMove;
     if (!move)
         return notification;
-    return Object.assign(Object.assign({}, notification), { body: `${context.actorName} played ${move.san}.${state.inCheck ? " Check." : " Your move."}` });
+    // Under fog the notification is the one place the move could still leak, so
+    // it says only that a move happened.
+    if (state.variant === "FOG_OF_WAR") {
+        return { ...notification, body: `${context.actorName} moved. Your turn.` };
+    }
+    return {
+        ...notification,
+        body: `${context.actorName} played ${move.san}.${state.inCheck ? " Check." : " Your move."}`,
+    };
 };
 const definitions = {
     [gameTypes_1.GameType.TIC_TAC_TOE]: {
@@ -116,18 +139,18 @@ const definitions = {
     [gameTypes_1.GameType.CHESS]: {
         type: gameTypes_1.GameType.CHESS,
         displayName: "Chess",
-        normalizeSettings: () => ({}),
+        normalizeSettings: CHESS_1.normalizeChessSettings,
         createState: CHESS_1.createChessState,
         normalizeState: CHESS_1.normalizeChessState,
+        viewState: CHESS_1.viewChessState,
         applyMove: CHESS_1.applyChessMove,
         modifyNotification: chessNotification,
     },
 };
 exports.supportedGameTypes = Object.keys(definitions);
 function getGameDefinition(type) {
-    var _a;
     if (typeof type !== "string")
         return null;
-    return (_a = definitions[type]) !== null && _a !== void 0 ? _a : null;
+    return definitions[type] ?? null;
 }
 exports.getGameDefinition = getGameDefinition;

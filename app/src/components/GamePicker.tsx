@@ -1,10 +1,25 @@
 import { useEffect, useState } from "react";
+import { FontAwesome5 } from "@expo/vector-icons";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { prefix } from "../../util/config";
 import { startGame } from "../../util/games";
 import { colors } from "../../util/theme";
-import { GameSession, GameType, User, WordDropVariant } from "../../util/types";
+import { ChessVariant, GameSelection, GameSession, GameType, User, WordDropVariant } from "../../util/types";
+
+export type GamePickerChoice = GameSelection;
+
+const SETTINGS_TITLE: Partial<Record<GameType, string>> = {
+  WORD_DROP: "Word Drop",
+  NUMBER_DROP: "Number Drop",
+  CHESS: "Chess",
+};
+
+const CHESS_VARIANTS: Array<{ value: ChessVariant; name: string; detail: string; icon: string }> = [
+  { value: "STANDARD", name: "Classic", detail: "The usual back rank, the usual rules", icon: "chess-board" },
+  { value: "CHESS960", name: "Chess960", detail: "Back rank shuffled — one of 960 openings", icon: "dice" },
+  { value: "FOG_OF_WAR", name: "Fog of War", detail: "You see only what your pieces cover. Take the king to win", icon: "cloud" },
+];
 
 function WordDropPreview() {
   return (
@@ -55,16 +70,45 @@ function NumberDropPreview() {
   );
 }
 
+function ChessPreview() {
+  const backRank = ["chess-rook", "chess-knight", "chess-bishop", "chess-queen", "chess-king", "chess-bishop", "chess-knight", "chess-rook"];
+  return (
+    <View style={styles.chessPreview}>
+      <View style={styles.chessMiniBoard}>
+        {Array.from({ length: 64 }, (_, index) => {
+          const row = Math.floor(index / 8);
+          const column = index % 8;
+          const side = row < 2 ? "black" : row > 5 ? "white" : null;
+          const name = row === 0 || row === 7 ? backRank[column] : "chess-pawn";
+          return (
+            <View key={index} style={[styles.chessMiniSquare, (row + column) % 2 === 0 ? styles.chessMiniLight : styles.chessMiniDark]}>
+              {side && <FontAwesome5 name={name as never} solid size={row === 1 || row === 6 ? 7 : 8} color={side === "white" ? "#F7F3E8" : "#111815"} />}
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export function GamePicker({
   friend,
   visible,
   onClose,
   onStarted,
+  onChoose,
+  submitLabel,
+  contextLabel,
+  allowTestVariant = true,
 }: {
   friend: User | null;
   visible: boolean;
   onClose: () => void;
-  onStarted: (game: GameSession) => void;
+  onStarted?: (game: GameSession) => void;
+  onChoose?: (choice: GamePickerChoice) => Promise<void>;
+  submitLabel?: string;
+  contextLabel?: string;
+  allowTestVariant?: boolean;
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +116,7 @@ export function GamePicker({
   const [wordDropVariant, setWordDropVariant] = useState<WordDropVariant>("REGULAR");
   const [moveTimerSeconds, setMoveTimerSeconds] = useState<null | 120 | 300>(null);
   const [numberDropRounds, setNumberDropRounds] = useState<1 | 3 | 5>(3);
+  const [chessVariant, setChessVariant] = useState<ChessVariant>("STANDARD");
   const [step, setStep] = useState<"game" | "settings">("game");
 
   useEffect(() => {
@@ -81,12 +126,14 @@ export function GamePicker({
     }
   }, [visible]);
 
+  const hasSettings = selected === "WORD_DROP" || selected === "NUMBER_DROP" || selected === "CHESS";
+
   function advanceOrSend() {
-    if (step === "game" && (selected === "WORD_DROP" || selected === "NUMBER_DROP")) {
+    if (step === "game" && hasSettings) {
       setStep("settings");
       return;
     }
-    void sendGame();
+    void submitGame();
   }
 
   function backOrClose() {
@@ -94,19 +141,29 @@ export function GamePicker({
     else onClose();
   }
 
-  async function sendGame() {
-    if (!friend || working) return;
+  function selectedChoice(): GamePickerChoice {
+    if (selected === "WORD_DROP") return { type: selected, settings: { variant: wordDropVariant, moveTimerSeconds } };
+    if (selected === "NUMBER_DROP") return { type: selected, settings: { rounds: numberDropRounds, moveTimerSeconds } };
+    if (selected === "EIGHT_BALL") return { type: selected, settings: {} };
+    if (selected === "CHESS") return { type: selected, settings: { variant: chessVariant } };
+    return { type: "TIC_TAC_TOE", settings: {} };
+  }
+
+  async function submitGame() {
+    if (working) return;
     setWorking(true);
     setError(null);
     try {
-      if (selected === "WORD_DROP") {
-        onStarted(await startGame(friend.id, "WORD_DROP", { variant: wordDropVariant, moveTimerSeconds }));
-      } else if (selected === "EIGHT_BALL") {
-        onStarted(await startGame(friend.id, "EIGHT_BALL", {}));
-      } else if (selected === "NUMBER_DROP") {
-        onStarted(await startGame(friend.id, "NUMBER_DROP", { rounds: numberDropRounds, moveTimerSeconds }));
+      const choice = selectedChoice();
+      if (onChoose) {
+        await onChoose(choice);
       } else {
-        onStarted(await startGame(friend.id, "TIC_TAC_TOE", {}));
+        if (!friend || !onStarted) throw new Error("Choose someone to play with");
+        if (choice.type === "WORD_DROP") onStarted(await startGame(friend.id, choice.type, choice.settings));
+        else if (choice.type === "EIGHT_BALL") onStarted(await startGame(friend.id, choice.type, choice.settings));
+        else if (choice.type === "NUMBER_DROP") onStarted(await startGame(friend.id, choice.type, choice.settings));
+        else if (choice.type === "CHESS") onStarted(await startGame(friend.id, choice.type, choice.settings));
+        else onStarted(await startGame(friend.id, choice.type, choice.settings));
       }
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Could not start the game");
@@ -120,7 +177,7 @@ export function GamePicker({
       <View style={styles.modalRoot}>
         <Pressable accessibilityLabel="Close game picker" style={styles.modalBackdrop} onPress={onClose} />
         <SafeAreaView style={styles.sheet} edges={["bottom"]}>
-          <Text style={styles.sheetTitle}>{step === "settings" ? `${selected === "NUMBER_DROP" ? "Number Drop" : "Word Drop"} options` : "Choose game"}</Text>
+          <Text style={styles.sheetTitle}>{step === "settings" ? `${SETTINGS_TITLE[selected] ?? "Game"} options` : "Choose game"}</Text>
           {step === "game" ? (
             <ScrollView style={styles.choicesScroll} contentContainerStyle={styles.choices} showsVerticalScrollIndicator={false}>
               <Pressable accessibilityRole="button" accessibilityLabel="Choose Word Drop" style={[styles.gameChoice, selected === "WORD_DROP" && styles.selectedGame]} onPress={() => setSelected("WORD_DROP")}>
@@ -151,31 +208,69 @@ export function GamePicker({
                   <Text style={styles.gameDescription}>Combine numbers and chase the target</Text>
                 </View>
               </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Choose Chess" style={[styles.gameChoice, selected === "CHESS" && styles.selectedGame]} onPress={() => setSelected("CHESS")}>
+                <ChessPreview />
+                <View style={styles.gameChoiceCopy}>
+                  <Text style={styles.gameName}>Chess</Text>
+                  <Text style={styles.gameDescription}>Classic, Chess960, or Fog of War</Text>
+                </View>
+              </Pressable>
             </ScrollView>
           ) : (
             <View style={styles.settingsSection}>
-              <Text style={styles.settingsLabel}>{selected === "NUMBER_DROP" ? "ROUND TIMER" : "MOVE TIMER"}</Text>
-              <View style={styles.timerChoices}>
-                {([
-                  { label: "No timer", value: null },
-                  { label: "2 min", value: 120 },
-                  { label: "5 min", value: 300 },
-                ] as const).map((option) => {
-                  const selectedTimer = moveTimerSeconds === option.value;
-                  return (
-                    <Pressable
-                      key={option.label}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: selectedTimer }}
-                      style={[styles.timerChoice, selectedTimer && styles.variantChoiceSelected]}
-                      onPress={() => setMoveTimerSeconds(option.value)}
-                    >
-                      <Text style={[styles.timerChoiceText, selectedTimer && styles.variantNameSelected]}>{option.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {selected === "WORD_DROP" ? (
+              {selected !== "CHESS" && (
+                <>
+                  <Text style={styles.settingsLabel}>{selected === "NUMBER_DROP" ? "ROUND TIMER" : "MOVE TIMER"}</Text>
+                  <View style={styles.timerChoices}>
+                    {([
+                      { label: "No timer", value: null },
+                      { label: "2 min", value: 120 },
+                      { label: "5 min", value: 300 },
+                    ] as const).map((option) => {
+                      const selectedTimer = moveTimerSeconds === option.value;
+                      return (
+                        <Pressable
+                          key={option.label}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: selectedTimer }}
+                          style={[styles.timerChoice, selectedTimer && styles.variantChoiceSelected]}
+                          onPress={() => setMoveTimerSeconds(option.value)}
+                        >
+                          <Text style={[styles.timerChoiceText, selectedTimer && styles.variantNameSelected]}>{option.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+              {selected === "CHESS" ? (
+                <>
+                  <Text style={styles.settingsLabel}>RULES</Text>
+                  <View style={styles.chessVariantChoices}>
+                    {CHESS_VARIANTS.map((option) => {
+                      const selectedVariant = chessVariant === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Choose ${option.name}`}
+                          accessibilityState={{ selected: selectedVariant }}
+                          style={[styles.chessVariantChoice, selectedVariant && styles.variantChoiceSelected]}
+                          onPress={() => setChessVariant(option.value)}
+                        >
+                          <View style={styles.chessVariantIcon}>
+                            <FontAwesome5 name={option.icon as never} solid size={15} color={selectedVariant ? colors.green : colors.muted} />
+                          </View>
+                          <View style={styles.chessVariantCopy}>
+                            <Text style={[styles.variantName, selectedVariant && styles.variantNameSelected]}>{option.name}</Text>
+                            <Text style={styles.variantDetail}>{option.detail}</Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : selected === "WORD_DROP" ? (
                 <>
                   <Text style={styles.settingsLabel}>GAME SIZE</Text>
                   <View style={styles.variantChoices}>
@@ -197,15 +292,17 @@ export function GamePicker({
                   <Text style={[styles.variantName, wordDropVariant === "MINI" && styles.variantNameSelected]}>Mini</Text>
                   <Text style={styles.variantDetail}>11×11 · 50 tiles</Text>
                 </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: wordDropVariant === "TEST" }}
-                  style={[styles.variantChoice, wordDropVariant === "TEST" && styles.variantChoiceSelected]}
-                  onPress={() => setWordDropVariant("TEST")}
-                >
-                  <Text style={[styles.variantName, wordDropVariant === "TEST" && styles.variantNameSelected]}>Test</Text>
-                  <Text style={styles.variantDetail}>11×11 · 6 in bag</Text>
-                </Pressable>
+                {allowTestVariant && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: wordDropVariant === "TEST" }}
+                    style={[styles.variantChoice, wordDropVariant === "TEST" && styles.variantChoiceSelected]}
+                    onPress={() => setWordDropVariant("TEST")}
+                  >
+                    <Text style={[styles.variantName, wordDropVariant === "TEST" && styles.variantNameSelected]}>Test</Text>
+                    <Text style={styles.variantDetail}>11×11 · 6 in bag</Text>
+                  </Pressable>
+                )}
                   </View>
                 </>
               ) : (
@@ -232,14 +329,14 @@ export function GamePicker({
               )}
             </View>
           )}
-          <Text style={styles.playingWith}>Play with {friend?.displayName}</Text>
+          {(friend || contextLabel) && <Text style={styles.playingWith}>{friend ? `Play with ${friend.displayName}` : contextLabel}</Text>}
           {error && <Text style={styles.error}>{error}</Text>}
           <View style={styles.actions}>
             <Pressable style={styles.cancelButton} onPress={backOrClose}><Text style={styles.cancelText}>{step === "settings" ? "Back" : "Cancel"}</Text></Pressable>
             <Pressable disabled={working} style={[styles.sendButton, working && styles.disabled]} onPress={advanceOrSend}>
               {working
                 ? <ActivityIndicator color={colors.background} />
-                : <Text style={styles.sendText}>{step === "game" && (selected === "WORD_DROP" || selected === "NUMBER_DROP") ? "Next" : "Send"}</Text>}
+                : <Text style={styles.sendText}>{step === "game" && hasSettings ? "Next" : (submitLabel ?? "Send")}</Text>}
             </Pressable>
           </View>
         </SafeAreaView>
@@ -275,6 +372,11 @@ const styles = StyleSheet.create({
   numberPreviewTile: { minWidth: 25, height: 25, paddingHorizontal: 3, borderRadius: 4, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" },
   numberPreviewTileText: { color: colors.background, fontSize: 9, fontWeight: "900" },
   numberPreviewTagline: { color: colors.green, fontSize: 7, fontWeight: "900", letterSpacing: 0.7, marginTop: 7 },
+  chessPreview: { width: 205, height: "100%", backgroundColor: "#17251C", alignItems: "center", justifyContent: "center" },
+  chessMiniBoard: { width: 88, height: 88, flexDirection: "row", flexWrap: "wrap", overflow: "hidden", borderRadius: 3 },
+  chessMiniSquare: { width: 11, height: 11, alignItems: "center", justifyContent: "center" },
+  chessMiniLight: { backgroundColor: "#B7E5BA" },
+  chessMiniDark: { backgroundColor: "#477457" },
   gameChoiceCopy: { flex: 1, paddingHorizontal: 10, justifyContent: "center" },
   gameName: { color: colors.text, fontSize: 15, fontWeight: "800" },
   gameDescription: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 4 },
@@ -285,6 +387,10 @@ const styles = StyleSheet.create({
   timerChoice: { flex: 1, minHeight: 46, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   timerChoiceText: { color: colors.text, fontSize: 13, fontWeight: "700" },
   variantChoices: { flexDirection: "row", gap: 8 },
+  chessVariantChoices: { gap: 8 },
+  chessVariantChoice: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 54, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  chessVariantIcon: { width: 26, alignItems: "center" },
+  chessVariantCopy: { flex: 1 },
   variantChoice: { flex: 1, minHeight: 57, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   roundChoice: { flex: 1, minHeight: 67, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   roundChoiceNumber: { color: colors.text, fontSize: 24, lineHeight: 27, fontWeight: "900" },

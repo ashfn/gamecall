@@ -5,6 +5,7 @@ import {
   Animated,
   AppState,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -101,6 +102,14 @@ interface QueuedOpponentShot {
 const LOCAL_STRIKE_DURATION_MS = 14;
 const CONTACT_VISUAL_LEAD_MS = 2;
 const AIM_DRAG_SENSITIVITY = 0.58;
+const AIM_MOMENTUM_MAX_VELOCITY = 0.0048;
+const AIM_MOMENTUM_MIN_VELOCITY = 0.00008;
+const AIM_MOMENTUM_DECAY_PER_FRAME = 0.84;
+const AIM_MOMENTUM_FLICK_WINDOW_MS = 90;
+const AIM_GUIDE_BALL_RESTITUTION = 0.93;
+const CUE_DEFLECTION_GUIDE_SCALE = 0.35;
+const AIM_GUIDE_FULL_STRENGTH_SCALE = 1.08;
+const AIM_GUIDE_SHORT_STRENGTH_BOOST = 1.92;
 const TABLE_DRAG_THRESHOLD = 5;
 const CUE_PLACEMENT_PERSIST_INTERVAL_MS = 120;
 const VISUAL_STOP_SPEED = 10;
@@ -357,7 +366,73 @@ interface PoolBallHandle {
 }
 
 interface NativeSvgNode {
-  setNativeProps: (props: any) => void;
+  setNativeProps?: (props: any) => void;
+  elementRef?: { current?: WebElementLike | null };
+}
+
+interface WebElementLike {
+  style?: Record<string, string | number>;
+  setAttribute?: (name: string, value: string) => void;
+}
+
+interface NativeViewNode {
+  setNativeProps?: (props: { style: Record<string, unknown> }) => void;
+  style?: Record<string, string | number>;
+}
+
+function webElementFor(node: unknown): WebElementLike | null {
+  if (!node || typeof node !== "object") return null;
+  const candidate = node as NativeSvgNode & WebElementLike;
+  return candidate.elementRef?.current ?? candidate;
+}
+
+function webTransformValue(transform: unknown) {
+  if (!Array.isArray(transform)) return String(transform ?? "");
+  return transform.map((entry) => {
+    if (!entry || typeof entry !== "object") return "";
+    const [operation] = Object.entries(entry);
+    if (!operation) return "";
+    return `${operation[0]}(${String(operation[1])})`;
+  }).filter(Boolean).join(" ");
+}
+
+/**
+ * React Native Web host refs are DOM elements and intentionally do not expose
+ * setNativeProps. Keep native on the imperative UI path, and update the DOM
+ * directly on web so the animation loop never has to rerender React.
+ */
+function updateViewStyle(node: unknown, style: Record<string, unknown>) {
+  if (!node) return;
+  if (Platform.OS !== "web") {
+    (node as NativeViewNode).setNativeProps?.({ style });
+    return;
+  }
+
+  const element = webElementFor(node);
+  if (!element?.style) return;
+  Object.entries(style).forEach(([property, rawValue]) => {
+    if (rawValue === undefined || rawValue === null) return;
+    const value = property === "transform"
+      ? webTransformValue(rawValue)
+      : typeof rawValue === "number" && (property === "left" || property === "top")
+        ? `${rawValue}px`
+        : String(rawValue);
+    element.style![property] = value;
+  });
+}
+
+function updateSvgProps(node: NativeSvgNode | null, props: Record<string, string | number>) {
+  if (!node) return;
+  if (Platform.OS !== "web") {
+    node.setNativeProps?.(props);
+    return;
+  }
+
+  const element = webElementFor(node);
+  if (!element?.setAttribute) return;
+  Object.entries(props).forEach(([property, value]) => {
+    element.setAttribute!(property, String(value));
+  });
 }
 
 function multiplyOrientation(left: BallOrientation, right: BallOrientation): BallOrientation {
@@ -510,6 +585,17 @@ function distanceToNextBall(point: CuePoint, dx: number, dy: number, balls: Eigh
   return distance;
 }
 
+function visualGuideStrength(strength: number) {
+  const clampedStrength = Math.max(0, Math.min(1, strength));
+  // Direction remains useful on thin cuts even though little speed transfers.
+  // Ease the visual length from roughly 3x for tiny guides to 1.08x head-on.
+  const shortGuideWeight = 1 - clampedStrength;
+  return clampedStrength * (
+    AIM_GUIDE_FULL_STRENGTH_SCALE
+    + AIM_GUIDE_SHORT_STRENGTH_BOOST * shortGuideWeight * shortGuideWeight
+  );
+}
+
 function projectedAim(cue: CuePoint, aimX: number, aimY: number, balls: EightBallBall[]) {
   const length = Math.hypot(aimX, aimY) || 1;
   const dx = aimX / length;
@@ -539,6 +625,9 @@ function projectedAim(cue: CuePoint, aimX: number, aimY: number, balls: EightBal
   let secondaryDirection: CuePoint | null = null;
   let secondaryStrength = 1;
   let secondaryMovingBall: number | null = null;
+  let cueDeflectionStart: CuePoint | null = null;
+  let cueDeflectionDirection: CuePoint | null = null;
+  let cueDeflectionStrength = 0;
   if (hitsBallFirst && hitBall) {
     secondaryStart = { x: hitBall.x, y: hitBall.y };
     secondaryMovingBall = hitBall.number;
@@ -550,6 +639,17 @@ function projectedAim(cue: CuePoint, aimX: number, aimY: number, balls: EightBal
     const transferredSpeed = Math.max(0, dx * unitNormalX + dy * unitNormalY);
     secondaryDirection = { x: unitNormalX, y: unitNormalY };
     secondaryStrength = transferredSpeed;
+    const impulseScale = (1 + AIM_GUIDE_BALL_RESTITUTION) / 2;
+    const cueOutX = dx - impulseScale * transferredSpeed * unitNormalX;
+    const cueOutY = dy - impulseScale * transferredSpeed * unitNormalY;
+    cueDeflectionStrength = Math.hypot(cueOutX, cueOutY);
+    if (cueDeflectionStrength > 0.001) {
+      cueDeflectionStart = cueEnd;
+      cueDeflectionDirection = {
+        x: cueOutX / cueDeflectionStrength,
+        y: cueOutY / cueDeflectionStrength,
+      };
+    }
   } else {
     secondaryStart = cueEnd;
     const touchesVertical = Math.abs(cueEnd.x - EIGHT_BALL_BALL_RADIUS) < 2
@@ -563,9 +663,27 @@ function projectedAim(cue: CuePoint, aimX: number, aimY: number, balls: EightBal
     : Number.POSITIVE_INFINITY;
   const secondaryLength = secondaryStart && secondaryDirection
     ? Math.min(
-      SECONDARY_GUIDE_LENGTH * secondaryStrength,
+      SECONDARY_GUIDE_LENGTH * visualGuideStrength(secondaryStrength),
       distanceToCushion(secondaryStart, secondaryDirection.x, secondaryDirection.y),
       nextBallDistance,
+    )
+    : 0;
+  const cueDeflectionBallDistance = cueDeflectionStart && cueDeflectionDirection && hitBall
+    ? distanceToNextBall(
+      cueDeflectionStart,
+      cueDeflectionDirection.x,
+      cueDeflectionDirection.y,
+      balls,
+      new Set([0, hitBall.number]),
+    )
+    : Number.POSITIVE_INFINITY;
+  const cueDeflectionLength = cueDeflectionStart && cueDeflectionDirection
+    ? Math.min(
+      SECONDARY_GUIDE_LENGTH
+        * CUE_DEFLECTION_GUIDE_SCALE
+        * visualGuideStrength(cueDeflectionStrength),
+      distanceToCushion(cueDeflectionStart, cueDeflectionDirection.x, cueDeflectionDirection.y),
+      cueDeflectionBallDistance,
     )
     : 0;
   return {
@@ -574,6 +692,11 @@ function projectedAim(cue: CuePoint, aimX: number, aimY: number, balls: EightBal
     secondaryEnd: secondaryStart && secondaryDirection ? {
       x: secondaryStart.x + secondaryDirection.x * secondaryLength,
       y: secondaryStart.y + secondaryDirection.y * secondaryLength,
+    } : null,
+    cueDeflectionStart,
+    cueDeflectionEnd: cueDeflectionStart && cueDeflectionDirection ? {
+      x: cueDeflectionStart.x + cueDeflectionDirection.x * cueDeflectionLength,
+      y: cueDeflectionStart.y + cueDeflectionDirection.y * cueDeflectionLength,
     } : null,
   };
 }
@@ -648,6 +771,9 @@ function EightBallGame({
   const animationFrame = useRef<number | null>(null);
   const animationWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
   const simulatingRef = useRef(false);
+  // True for the whole local shot, including the cue pull-back and strike that
+  // happen before `simulatingRef` goes up at contact.
+  const shotInFlight = useRef(false);
   const latestServerBalls = useRef(game.state.balls);
   const authoritativeBalls = useRef(game.state.balls);
   const initialReplayCount = game.state.recentShots?.length ?? (game.state.lastShot ? 1 : 0);
@@ -665,6 +791,10 @@ function EightBallGame({
   const tableDragMode = useRef<"aim-from-cue" | "aim-to-point" | "cue">("aim-to-point");
   const tableDragStarted = useRef(false);
   const tableLastDragPoint = useRef<CuePoint | null>(null);
+  const cueDragOffset = useRef<CuePoint | null>(null);
+  const aimMomentumFrame = useRef<number | null>(null);
+  const aimAngularVelocity = useRef(0);
+  const lastAimDragAt = useRef(0);
   const cuePlacementFrame = useRef<number | null>(null);
   const pendingCuePlacement = useRef<CuePoint | null>(null);
   const cuePlacementDirty = useRef(false);
@@ -675,6 +805,7 @@ function EightBallGame({
   const cuePivotRef = useRef<View>(null);
   const aimCueLineRef = useRef<NativeSvgNode | null>(null);
   const aimSecondaryLineRef = useRef<NativeSvgNode | null>(null);
+  const aimCueDeflectionLineRef = useRef<NativeSvgNode | null>(null);
   const aimTargetCircleRef = useRef<NativeSvgNode | null>(null);
   const tableFrameRef = useRef<View>(null);
   const tableFrameWindowOrigin = useRef({ x: 0, y: 0, ready: false });
@@ -691,6 +822,8 @@ function EightBallGame({
     || statePhysicsVersion === EIGHT_BALL_V9_PHYSICS_VERSION;
   const isMyTurn = game.status === "STARTED" && game.waitingOn === account.id;
   const canInteract = physicsCompatible && isMyTurn && !sending && !simulating && !cueStriking;
+  const canInteractRef = useRef(canInteract);
+  canInteractRef.current = canInteract;
   const showAimingCue = (isMyTurn && (!simulating || cueStriking))
     || (replayingOpponent && cueStriking);
   const hasBallInHand = game.state.ballInHandFor === account.id;
@@ -712,12 +845,13 @@ function EightBallGame({
   if (!cuePlacementDirty.current) cuePlacementRef.current = cuePlacement;
   cuePlacementScopeRef.current = cuePlacementScope;
   placementEpochRef.current = placementEpoch;
-  aimRef.current = aim;
+  if (aimMomentumFrame.current === null) aimRef.current = aim;
 
   useEffect(() => () => {
     if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
     if (animationWatchdog.current !== null) clearTimeout(animationWatchdog.current);
     if (cuePlacementFrame.current !== null) cancelAnimationFrame(cuePlacementFrame.current);
+    if (aimMomentumFrame.current !== null) cancelAnimationFrame(aimMomentumFrame.current);
     if (cuePlacementDirty.current) {
       const finalPoint = pendingCuePlacement.current ?? cuePlacementRef.current;
       void saveLocalGameState<EightBallLocalState>(cuePlacementScopeRef.current, {
@@ -1020,11 +1154,19 @@ function EightBallGame({
     });
     playQueuedOpponentShots();
 
-    if (!simulatingRef.current && replayQueue.current.length === 0) {
+    /*
+     * `simulatingRef` only goes up at contact, so the cue pull-back and strike
+     * are not covered by it; a refresh landing in that window used to re-commit
+     * the table mid-swing.
+     */
+    if (!simulatingRef.current && !shotInFlight.current && replayQueue.current.length === 0) {
       commitBallSnapshot(game.state.balls);
     }
 
-  }, [account.id, commitBallSnapshot, game.opponent.id, game.state.ballInHandFor, game.state.balls, game.state.breakShot, game.state.lastShot, game.state.recentShots, game.state.shotNumber, game.version, playQueuedOpponentShots]);
+    // Keyed on the version, not on `game.state.*`: those are freshly parsed
+    // objects on every fetch, so depending on them re-ran this for every poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.id, game.version]);
 
   const skipReplay = useCallback(() => {
     if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
@@ -1032,6 +1174,7 @@ function EightBallGame({
     if (animationWatchdog.current !== null) clearTimeout(animationWatchdog.current);
     animationWatchdog.current = null;
     simulatingRef.current = false;
+    shotInFlight.current = false;
     replayRunning.current = false;
     replayQueue.current = [];
     activePocketTransits.current.clear();
@@ -1056,8 +1199,14 @@ function EightBallGame({
       power: Math.max(1, Math.min(EIGHT_BALL_MAX_POWER, Math.round(shotPower))),
       ...(canPlaceCue ? { cueX: Math.round(cuePlacementRef.current.x), cueY: Math.round(cuePlacementRef.current.y) } : {}),
     } as const;
+    /*
+     * Simulate from the cue position that is actually sent, not the raw drag
+     * position: the payload rounds it and the server truncates it again, so
+     * simulating from the unrounded point made the local table settle somewhere
+     * the server never agreed with, and the reconciliation snapped it back.
+     */
     const input = game.state.balls.map((ball) => ball.number === 0 && canPlaceCue
-      ? { ...ball, ...cuePlacementRef.current, pocketed: false }
+      ? { ...ball, x: shot.cueX ?? ball.x, y: shot.cueY ?? ball.y, pocketed: false }
       : ball);
     if (statePhysicsVersion === EIGHT_BALL_V9_PHYSICS_VERSION) {
       const simulation = simulateEightBallShotV9(input, shot, { captureHz: V7_CAPTURE_HZ });
@@ -1083,6 +1232,7 @@ function EightBallGame({
     if (animationWatchdog.current !== null) clearTimeout(animationWatchdog.current);
     const frames = prepared.frames;
     if (frames.length === 0) throw new Error("Shot produced no animation");
+    shotInFlight.current = true;
     onPresentationBusyChange?.(true);
     const startedAt = monotonicNow();
     let contactAt: number | null = null;
@@ -1106,6 +1256,7 @@ function EightBallGame({
       animationWatchdog.current = null;
       startNetwork();
       simulatingRef.current = false;
+      shotInFlight.current = false;
       activePocketTransits.current.clear();
       powerPull.setValue(0);
       cueStrike.setValue(0);
@@ -1201,6 +1352,7 @@ function EightBallGame({
     onStartShouldSetPanResponder: () => canInteract,
     onMoveShouldSetPanResponder: () => canInteract,
     onPanResponderGrant: () => {
+      stopAimMomentum();
       livePower.current = 0;
       pullDistance.current = 0;
       powerPull.setValue(0);
@@ -1240,15 +1392,31 @@ function EightBallGame({
   function tablePoint(event: GestureResponderEvent): CuePoint | null {
     if (!tableScale) return null;
     const frameOrigin = tableFrameWindowOrigin.current;
-    const localX = frameOrigin.ready
-      ? event.nativeEvent.pageX - frameOrigin.x
-      : event.nativeEvent.locationX - tableFrameParentOffset.current.x;
-    const localY = frameOrigin.ready
-      ? event.nativeEvent.pageY - frameOrigin.y
-      : event.nativeEvent.locationY - tableFrameParentOffset.current.y;
+    // On web, locationX/Y are derived from the responder's current bounding
+    // rect on every event. That stays correct when responsive layout moves the
+    // table, whereas an earlier measureInWindow result can become stale.
+    const useResponderCoordinates = Platform.OS === "web" || !frameOrigin.ready;
+    const localX = useResponderCoordinates
+      ? event.nativeEvent.locationX - tableFrameParentOffset.current.x
+      : event.nativeEvent.pageX - frameOrigin.x;
+    const localY = useResponderCoordinates
+      ? event.nativeEvent.locationY - tableFrameParentOffset.current.y
+      : event.nativeEvent.pageY - frameOrigin.y;
+    if (!Number.isFinite(localX) || !Number.isFinite(localY)) return null;
     const x = (localX - TABLE_FRAME_BORDER - tableOriginX) / tableScale;
     const y = (localY - TABLE_FRAME_BORDER - tableOriginY) / tableScale;
     return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  function boundedCuePlacement(point: CuePoint): CuePoint {
+    const radius = EIGHT_BALL_BALL_RADIUS;
+    return {
+      x: Math.round(Math.max(radius, Math.min(EIGHT_BALL_TABLE_WIDTH - radius, point.x))),
+      y: Math.round(Math.max(
+        game.state.breakShot ? EIGHT_BALL_HEAD_STRING_Y : radius,
+        Math.min(EIGHT_BALL_TABLE_HEIGHT - radius, point.y),
+      )),
+    };
   }
 
   function measureTableFrame() {
@@ -1268,7 +1436,16 @@ function EightBallGame({
     let delta = Math.atan2(nextY, nextX) - Math.atan2(previousY, previousX);
     while (delta > Math.PI) delta -= Math.PI * 2;
     while (delta < -Math.PI) delta += Math.PI * 2;
-    cueAngleRef.current += delta * AIM_DRAG_SENSITIVITY;
+    const appliedDelta = delta * AIM_DRAG_SENSITIVITY;
+    const now = monotonicNow();
+    const elapsed = lastAimDragAt.current > 0 ? Math.max(4, now - lastAimDragAt.current) : 16;
+    const instantaneousVelocity = Math.max(
+      -AIM_MOMENTUM_MAX_VELOCITY,
+      Math.min(AIM_MOMENTUM_MAX_VELOCITY, appliedDelta / elapsed),
+    );
+    aimAngularVelocity.current = aimAngularVelocity.current * 0.35 + instantaneousVelocity * 0.65;
+    lastAimDragAt.current = now;
+    cueAngleRef.current += appliedDelta;
     const next = {
       x: Math.round(Math.cos(cueAngleRef.current) * 10000),
       y: Math.round(Math.sin(cueAngleRef.current) * 10000),
@@ -1276,6 +1453,52 @@ function EightBallGame({
     aimRef.current = next;
     setAim(next);
     setCueAngle(cueAngleRef.current * 180 / Math.PI);
+  }
+
+  function stopAimMomentum(commitReactState = true) {
+    const hadMomentum = aimMomentumFrame.current !== null
+      || Math.abs(aimAngularVelocity.current) >= AIM_MOMENTUM_MIN_VELOCITY;
+    if (aimMomentumFrame.current !== null) {
+      cancelAnimationFrame(aimMomentumFrame.current);
+      aimMomentumFrame.current = null;
+    }
+    aimAngularVelocity.current = 0;
+    lastAimDragAt.current = 0;
+    if (commitReactState && hadMomentum) {
+      setAim(aimRef.current);
+      setCueAngle(cueAngleRef.current * 180 / Math.PI);
+    }
+  }
+
+  function startAimMomentum() {
+    if (monotonicNow() - lastAimDragAt.current > AIM_MOMENTUM_FLICK_WINDOW_MS
+      || Math.abs(aimAngularVelocity.current) < AIM_MOMENTUM_MIN_VELOCITY) {
+      stopAimMomentum();
+      return;
+    }
+
+    let previousFrameAt = monotonicNow();
+    const step = (now: number) => {
+      const elapsed = Math.min(32, Math.max(1, now - previousFrameAt));
+      previousFrameAt = now;
+      const frameScale = elapsed / (1000 / 60);
+      aimAngularVelocity.current *= Math.pow(AIM_MOMENTUM_DECAY_PER_FRAME, frameScale);
+      if (Math.abs(aimAngularVelocity.current) < AIM_MOMENTUM_MIN_VELOCITY || !canInteractRef.current) {
+        stopAimMomentum();
+        return;
+      }
+
+      cueAngleRef.current += aimAngularVelocity.current * elapsed;
+      aimRef.current = {
+        x: Math.round(Math.cos(cueAngleRef.current) * 10000),
+        y: Math.round(Math.sin(cueAngleRef.current) * 10000),
+      };
+      // Move the cue and both guide segments in one frame without rerendering
+      // the whole table. React receives the final angle when it settles.
+      renderCuePlacementNative(cuePointRef.current);
+      aimMomentumFrame.current = requestAnimationFrame(step);
+    };
+    aimMomentumFrame.current = requestAnimationFrame(step);
   }
 
   function isTouchingCueHandle(point: CuePoint) {
@@ -1307,31 +1530,27 @@ function EightBallGame({
       { underTable: false, hidden: false },
     );
     const guideSize = Math.max(66, geometry.ballSize * 3.5);
-    placementGuideRef.current?.setNativeProps({
-      style: {
-        left: centerX - guideSize / 2,
-        top: centerY - guideSize / 2,
-      },
+    updateViewStyle(placementGuideRef.current, {
+      left: centerX - guideSize / 2,
+      top: centerY - guideSize / 2,
     });
-    cuePivotRef.current?.setNativeProps({
-      style: {
-        left: centerX,
-        top: centerY,
-        transform: [{ rotate: `${cueAngleRef.current * 180 / Math.PI}deg` }],
-      },
+    updateViewStyle(cuePivotRef.current, {
+      left: centerX,
+      top: centerY,
+      transform: [{ rotate: `${cueAngleRef.current * 180 / Math.PI}deg` }],
     });
 
     const projection = projectedAim(point, aimRef.current.x, aimRef.current.y, renderedBallsRef.current);
     const mapX = (x: number) => geometry.originX + x * geometry.scale;
     const mapY = (y: number) => geometry.originY + y * geometry.scale;
-    aimCueLineRef.current?.setNativeProps({
+    updateSvgProps(aimCueLineRef.current, {
       x1: centerX,
       y1: centerY,
       x2: mapX(projection.cueEnd.x),
       y2: mapY(projection.cueEnd.y),
     });
     if (projection.secondaryStart && projection.secondaryEnd) {
-      aimSecondaryLineRef.current?.setNativeProps({
+      updateSvgProps(aimSecondaryLineRef.current, {
         x1: mapX(projection.secondaryStart.x),
         y1: mapY(projection.secondaryStart.y),
         x2: mapX(projection.secondaryEnd.x),
@@ -1339,9 +1558,20 @@ function EightBallGame({
         opacity: 1,
       });
     } else {
-      aimSecondaryLineRef.current?.setNativeProps({ opacity: 0 });
+      updateSvgProps(aimSecondaryLineRef.current, { opacity: 0 });
     }
-    aimTargetCircleRef.current?.setNativeProps({
+    if (projection.cueDeflectionStart && projection.cueDeflectionEnd) {
+      updateSvgProps(aimCueDeflectionLineRef.current, {
+        x1: mapX(projection.cueDeflectionStart.x),
+        y1: mapY(projection.cueDeflectionStart.y),
+        x2: mapX(projection.cueDeflectionEnd.x),
+        y2: mapY(projection.cueDeflectionEnd.y),
+        opacity: 1,
+      });
+    } else {
+      updateSvgProps(aimCueDeflectionLineRef.current, { opacity: 0 });
+    }
+    updateSvgProps(aimTargetCircleRef.current, {
       cx: mapX(projection.cueEnd.x),
       cy: mapY(projection.cueEnd.y),
     });
@@ -1395,10 +1625,12 @@ function EightBallGame({
     onStartShouldSetPanResponder: () => canInteract,
     onMoveShouldSetPanResponder: () => canInteract,
     onPanResponderGrant: (event) => {
+      stopAimMomentum(false);
       const point = tablePoint(event);
       if (!point) return;
       tableDragStarted.current = false;
       tableLastDragPoint.current = point;
+      cueDragOffset.current = null;
       const cue = cuePointRef.current;
       const distanceFromCueBall = Math.hypot(point.x - cue.x, point.y - cue.y);
       const placementGuideRadius = Math.max(
@@ -1407,6 +1639,7 @@ function EightBallGame({
       );
       if (canPlaceCue && distanceFromCueBall <= placementGuideRadius && !isTouchingCueHandle(point)) {
         tableDragMode.current = "cue";
+        cueDragOffset.current = { x: point.x - cue.x, y: point.y - cue.y };
         return;
       }
       const offsetX = point.x - cue.x;
@@ -1422,10 +1655,15 @@ function EightBallGame({
         tableDragStarted.current = true;
       }
       if (canPlaceCue && tableDragMode.current === "cue") {
+        const offset = cueDragOffset.current ?? { x: 0, y: 0 };
+        const placement = boundedCuePlacement({
+          x: point.x - offset.x,
+          y: point.y - offset.y,
+        });
         const placementIsLegal = game.state.breakShot
-          ? isEightBallBreakPlacementLegal(game.state.balls, point.x, point.y)
-          : isEightBallPlacementLegal(game.state.balls, point.x, point.y, 0);
-        if (placementIsLegal) scheduleCuePlacement(point);
+          ? isEightBallBreakPlacementLegal(game.state.balls, placement.x, placement.y)
+          : isEightBallPlacementLegal(game.state.balls, placement.x, placement.y, 0);
+        if (placementIsLegal) scheduleCuePlacement(placement);
       } else if (tableDragMode.current !== "cue") {
         const previousPoint = tableLastDragPoint.current;
         if (previousPoint) rotateAimFromDrag(previousPoint, point);
@@ -1434,13 +1672,17 @@ function EightBallGame({
     },
     onPanResponderRelease: () => {
       if (tableDragMode.current === "cue" && tableDragStarted.current) commitCuePlacement();
+      else if (tableDragStarted.current) startAimMomentum();
       tableDragStarted.current = false;
       tableLastDragPoint.current = null;
+      cueDragOffset.current = null;
     },
     onPanResponderTerminate: () => {
       if (tableDragMode.current === "cue" && tableDragStarted.current) commitCuePlacement();
+      else stopAimMomentum();
       tableDragStarted.current = false;
       tableLastDragPoint.current = null;
+      cueDragOffset.current = null;
     },
     onPanResponderTerminationRequest: () => false,
   }), [canInteract, canPlaceCue, game.state.balls, game.state.breakShot, tableOriginX, tableOriginY, tableScale]);
@@ -1541,6 +1783,8 @@ function EightBallGame({
             />
 
             <TableCushions
+              canvasWidth={tableInnerWidth}
+              canvasHeight={tableInnerHeight}
               left={surfaceOriginX}
               top={surfaceOriginY}
               width={surfaceWidth}
@@ -1555,7 +1799,7 @@ function EightBallGame({
             }]} />
           )}
 
-          {cueBall && aimProjection && canInteract && (
+          {cueBall && aimProjection && showAimingCue && (
             <Svg pointerEvents="none" style={styles.aimGuide} width={tableInnerWidth} height={tableInnerHeight}>
               <Line
                 ref={(node) => { aimCueLineRef.current = node; }}
@@ -1566,17 +1810,26 @@ function EightBallGame({
                 stroke="rgba(255,255,255,0.76)"
                 strokeWidth={1.7}
               />
-              {aimProjection.secondaryStart && aimProjection.secondaryEnd && (
-                <Line
-                  ref={(node) => { aimSecondaryLineRef.current = node; }}
-                  x1={mapTableX(aimProjection.secondaryStart.x)}
-                  y1={mapTableY(aimProjection.secondaryStart.y)}
-                  x2={mapTableX(aimProjection.secondaryEnd.x)}
-                  y2={mapTableY(aimProjection.secondaryEnd.y)}
-                  stroke="rgba(255,255,255,0.5)"
-                  strokeWidth={1.35}
-                />
-              )}
+              <Line
+                ref={(node) => { aimSecondaryLineRef.current = node; }}
+                x1={mapTableX(aimProjection.secondaryStart?.x ?? aimProjection.cueEnd.x)}
+                y1={mapTableY(aimProjection.secondaryStart?.y ?? aimProjection.cueEnd.y)}
+                x2={mapTableX(aimProjection.secondaryEnd?.x ?? aimProjection.cueEnd.x)}
+                y2={mapTableY(aimProjection.secondaryEnd?.y ?? aimProjection.cueEnd.y)}
+                opacity={aimProjection.secondaryStart && aimProjection.secondaryEnd ? 1 : 0}
+                stroke="rgba(255,255,255,0.5)"
+                strokeWidth={1.35}
+              />
+              <Line
+                ref={(node) => { aimCueDeflectionLineRef.current = node; }}
+                x1={mapTableX(aimProjection.cueDeflectionStart?.x ?? aimProjection.cueEnd.x)}
+                y1={mapTableY(aimProjection.cueDeflectionStart?.y ?? aimProjection.cueEnd.y)}
+                x2={mapTableX(aimProjection.cueDeflectionEnd?.x ?? aimProjection.cueEnd.x)}
+                y2={mapTableY(aimProjection.cueDeflectionEnd?.y ?? aimProjection.cueEnd.y)}
+                opacity={aimProjection.cueDeflectionStart && aimProjection.cueDeflectionEnd ? 1 : 0}
+                stroke="rgba(255,255,255,0.58)"
+                strokeWidth={1.35}
+              />
               <Circle
                 ref={(node) => { aimTargetCircleRef.current = node; }}
                 cx={mapTableX(aimProjection.cueEnd.x)}
@@ -1745,7 +1998,21 @@ function PowerCueGraphic() {
   );
 }
 
-function TableCushions({ left, top, width, height }: { left: number; top: number; width: number; height: number }) {
+function TableCushions({
+  canvasWidth,
+  canvasHeight,
+  left,
+  top,
+  width,
+  height,
+}: {
+  canvasWidth: number;
+  canvasHeight: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}) {
   const thickness = CUSHION_DEPTH;
   const radius = POCKET_SIZE / 2;
   // Include cushion stroke width in the clearance so antialiasing can never
@@ -1769,7 +2036,13 @@ function TableCushions({ left, top, width, height }: { left: number; top: number
     `M ${right} ${centerY + outerOffset} L ${right} ${innerBottom - outerOffset} L ${innerRight} ${innerBottom - jawRadius} L ${innerRight} ${centerY + jawRadius} Z`,
   ];
   return (
-    <Svg pointerEvents="none" style={styles.cushions}>
+    <Svg
+      pointerEvents="none"
+      style={styles.cushions}
+      width={canvasWidth}
+      height={canvasHeight}
+      viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+    >
       {paths.map((path, index) => (
         <Path
           key={index}
@@ -1944,23 +2217,21 @@ const PoolBall = memo(forwardRef<PoolBallHandle, {
 
   useImperativeHandle(forwardedRef, () => ({
     update(nextLeft, nextTop, pocketed, nextOrientation, visual) {
-      rootRef.current?.setNativeProps({
-        style: {
-          left: nextLeft,
-          top: nextTop,
-          opacity: pocketed || visual?.hidden ? 0 : 1,
-          zIndex: visual?.underTable ? 2 : 8,
-        },
+      updateViewStyle(rootRef.current, {
+        left: nextLeft,
+        top: nextTop,
+        opacity: pocketed || visual?.hidden ? 0 : 1,
+        zIndex: visual?.underTable ? 2 : 8,
       });
       if (!nextOrientation || ball.number === 0) return;
       if (striped) {
         const paths = projectStripePaths(nextOrientation, size);
         stripeRefs.current.forEach((pathRef, index) => {
-          pathRef?.setNativeProps({ d: paths[index] ?? "" });
+          updateSvgProps(pathRef, { d: paths[index] ?? "" });
         });
       }
       const nextSpot = projectFrontNumberSpot(nextOrientation, size);
-      spotRef.current?.setNativeProps({
+      updateSvgProps(spotRef.current, {
         opacity: nextSpot.visibility,
         transform: `matrix(${nextSpot.a} ${nextSpot.b} ${nextSpot.c} ${nextSpot.d} ${nextSpot.e} ${nextSpot.f})`,
       });

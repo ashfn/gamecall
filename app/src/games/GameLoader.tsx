@@ -6,6 +6,7 @@ import TicTacToe from "./game_components/TicTacToe";
 import WordDrop from "./game_components/WordDrop";
 import EightBall from "./game_components/EightBall";
 import NumberDrop from "./game_components/NumberDrop";
+import Chess from "./game_components/Chess";
 
 export type GameMovePayload = Readonly<Record<string, unknown>>;
 
@@ -48,6 +49,12 @@ const gameDefinitions: Record<GameSession["type"], GameDefinition> = {
     type: "NUMBER_DROP",
     name: "Number Drop",
     component: NumberDrop,
+    fullScreen: true,
+  },
+  CHESS: {
+    type: "CHESS",
+    name: "Chess",
+    component: Chess,
     fullScreen: true,
   },
 };

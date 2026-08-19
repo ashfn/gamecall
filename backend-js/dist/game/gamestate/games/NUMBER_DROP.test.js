@@ -30,11 +30,10 @@ const NUMBER_DROP_1 = require("./NUMBER_DROP");
     strict_1.default.ok(completedRound.state.scores["2"] >= 0);
 });
 (0, node_test_1.default)("a timed-out round scores zero and advances normally", () => {
-    var _a, _b;
     const state = (0, NUMBER_DROP_1.createNumberDropState)(1, 2, { rounds: 3, moveTimerSeconds: 120 });
     const timedOut = (0, NUMBER_DROP_1.applyNumberDropTurnTimeout)(state, 1);
-    strict_1.default.equal((_a = timedOut.state.submissions["1"]) === null || _a === void 0 ? void 0 : _a.score, 0);
-    strict_1.default.equal((_b = timedOut.state.submissions["1"]) === null || _b === void 0 ? void 0 : _b.timedOut, true);
+    strict_1.default.equal(timedOut.state.submissions["1"]?.score, 0);
+    strict_1.default.equal(timedOut.state.submissions["1"]?.timedOut, true);
     const completedRound = (0, NUMBER_DROP_1.applyNumberDropMove)(timedOut.state, 2, { kind: "submit", steps: [], resultId: "n0" });
     strict_1.default.equal(completedRound.state.currentRound, 2);
     strict_1.default.equal(completedRound.state.scores["1"], 0);

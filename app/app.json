@@ -33,7 +33,10 @@
     },
     "backgroundColor": "#000000",
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "themeColor": "#0A0A0A",
+      "backgroundColor": "#0A0A0A",
+      "barStyle": "black-translucent"
     },
     "plugins": [
       "expo-router",

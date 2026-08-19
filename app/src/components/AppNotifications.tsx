@@ -1,16 +1,27 @@
 import * as Notifications from "expo-notifications";
-import { router } from "expo-router";
-import { PropsWithChildren, useEffect, useRef } from "react";
-import { AppState, Platform } from "react-native";
+import { router, usePathname } from "expo-router";
+import { PropsWithChildren, useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Platform, StyleSheet, View } from "react-native";
 import { useAccountDetailsStore } from "../../util/auth";
 import { registerPushNotifications } from "../../util/notifications";
+import { InAppNotice, Notice } from "./InAppNotice";
 
+/*
+ * `handleNotification` runs only while the app is foregrounded — a notification
+ * that arrives in the background is presented by the OS and never reaches this
+ * code. So this is exactly, and only, the "banner while you are already using
+ * the app" path, and turning it off here leaves background alerts untouched.
+ *
+ * Foregrounded deliveries are surfaced by `InAppNotice` instead, which we can
+ * keep quiet for the screen the player is already looking at. They still land
+ * in Notification Centre (`shouldShowList`) so nothing is lost.
+ */
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowBanner: true,
+      shouldShowBanner: false,
       shouldShowList: true,
-      shouldPlaySound: true,
+      shouldPlaySound: false,
       shouldSetBadge: false,
     }),
   });
@@ -22,6 +33,12 @@ type PushData = {
   userId?: unknown;
   recipientId?: unknown;
 };
+
+function iconForNotification(data: PushData): string {
+  if (data.kind === "message") return "comment";
+  if (data.kind === "friend_request") return "user-plus";
+  return "dice-five";
+}
 
 function routeForNotification(data: PushData): string | null {
   if (data.kind === "game") {
@@ -45,9 +62,41 @@ export function AppNotifications({ children }: PropsWithChildren) {
   const accountRef = useRef(account);
   const pendingResponse = useRef<Notifications.NotificationResponse | null>(null);
   const handledResponseId = useRef<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
 
   useEffect(() => { accountRef.current = account; }, [account]);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
   useEffect(() => { void initialize(); }, [initialize]);
+
+  const dismissNotice = useCallback(() => setNotice(null), []);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
+
+    const received = (notification: Notifications.Notification) => {
+      const { title, body, data } = notification.request.content;
+      const recipientId = Number((data as PushData).recipientId);
+      // Someone else's notification arriving on a shared device is not ours to show.
+      if (Number.isInteger(recipientId) && recipientId !== accountRef.current?.id) return;
+
+      const destination = routeForNotification(data as PushData);
+      // Nothing to announce about the screen the player is already on.
+      if (destination && pathnameRef.current === destination) return;
+
+      setNotice({
+        id: notification.request.identifier,
+        title: title ?? "Rainfrog",
+        body: body ?? "",
+        icon: iconForNotification(data as PushData),
+        onPress: destination ? () => router.push(destination) : undefined,
+      });
+    };
+
+    const subscription = Notifications.addNotificationReceivedListener(received);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return undefined;
@@ -116,5 +165,14 @@ export function AppNotifications({ children }: PropsWithChildren) {
     };
   }, [account?.id]);
 
-  return children;
+  return (
+    <View style={styles.host}>
+      {children}
+      <InAppNotice notice={notice} onDismiss={dismissNotice} />
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  host: { flex: 1 },
+});

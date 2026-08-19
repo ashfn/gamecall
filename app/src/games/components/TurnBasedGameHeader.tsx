@@ -11,11 +11,15 @@ export interface TurnBasedPlayerScore {
   label: string;
   score: number;
   active: boolean;
+  footer?: ReactNode;
+  backgroundColor?: string;
+  foregroundColor?: string;
 }
 
 export interface TurnBasedGameHeaderProps {
   player: TurnBasedPlayerScore;
   opponent: TurnBasedPlayerScore;
+  players?: TurnBasedPlayerScore[];
   turnIndicator?: ReactNode;
   centerAccessory?: ReactNode;
   resultIndicator?: ReactNode;
@@ -70,13 +74,29 @@ export function TurnStatus({ label, active = false, compact = false }: { label: 
 const TurnBasedGameHeader = memo(function TurnBasedGameHeader({
   player,
   opponent,
+  players,
   turnIndicator,
   centerAccessory,
   resultIndicator,
 }: TurnBasedGameHeaderProps) {
   const hasTurnIndicator = turnIndicator !== null && turnIndicator !== undefined && turnIndicator !== false;
+  const hasCardFooters = Boolean(player.footer || opponent.footer);
+  if (players && players.length > 2) {
+    return (
+      <View style={[styles.header, styles.multiplayerHeader]}>
+        <View style={styles.multiplayerScores}>
+          {players.map((score) => <PlayerScoreCard key={score.user.id} {...score} compact />)}
+        </View>
+        <View style={styles.multiplayerCenterRow}>
+          {hasTurnIndicator && <View style={styles.multiplayerTurnIndicator}>{turnIndicator}</View>}
+          <View style={styles.multiplayerAccessory}>{centerAccessory}</View>
+        </View>
+        {resultIndicator && <View style={styles.resultIndicator}>{resultIndicator}</View>}
+      </View>
+    );
+  }
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, hasCardFooters && styles.headerWithCardFooters]}>
       <PlayerScoreCard {...player} />
       <View style={[styles.centerColumn, !hasTurnIndicator && styles.centerColumnAccessoryOnly]}>
         {hasTurnIndicator && <View style={styles.turnIndicatorSlot}>{turnIndicator}</View>}
@@ -93,25 +113,39 @@ const PlayerScoreCard = memo(function PlayerScoreCard({
   label,
   score,
   active,
+  footer,
+  backgroundColor,
+  foregroundColor,
   reverse = false,
-}: TurnBasedPlayerScore & { reverse?: boolean }) {
+  compact = false,
+}: TurnBasedPlayerScore & { reverse?: boolean; compact?: boolean }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
+  const hasFooter = footer !== null && footer !== undefined && footer !== false;
   return (
-    <View style={[styles.playerScore, active && styles.playerScoreActive, reverse && styles.playerScoreReverse]}>
-      <View style={styles.scoreAvatar}>
-        <Text style={styles.scoreInitial}>{user.displayName.slice(0, 1).toUpperCase()}</Text>
-        {!avatarFailed && (
-          <Image
-            source={{ uri: `${prefix}/profile/${user.id}/avatar` }}
-            style={styles.scoreAvatarImage}
-            onError={() => setAvatarFailed(true)}
-          />
-        )}
+    <View style={[
+      styles.playerScore,
+      compact && styles.playerScoreCompact,
+      hasFooter && styles.playerScoreWithFooter,
+      backgroundColor ? { backgroundColor } : null,
+      active && styles.playerScoreActive,
+    ]}>
+      <View style={[styles.scoreMain, reverse && styles.playerScoreReverse]}>
+        <View style={styles.scoreAvatar}>
+          <Text style={styles.scoreInitial}>{user.displayName.slice(0, 1).toUpperCase()}</Text>
+          {!avatarFailed && user.accountId !== null && !user.anonymous && (
+            <Image
+              source={{ uri: `${prefix}/profile/${user.accountId ?? user.id}/avatar` }}
+              style={styles.scoreAvatarImage}
+              onError={() => setAvatarFailed(true)}
+            />
+          )}
+        </View>
+        <View style={[styles.scoreCopy, reverse && styles.scoreCopyReverse]}>
+          <Text style={[styles.scoreValue, foregroundColor ? { color: foregroundColor } : null]}>{score}</Text>
+          <Text style={[styles.scoreName, foregroundColor ? { color: foregroundColor, opacity: 0.7 } : null]} numberOfLines={1}>{label}</Text>
+        </View>
       </View>
-      <View style={[styles.scoreCopy, reverse && styles.scoreCopyReverse]}>
-        <Text style={styles.scoreValue}>{score}</Text>
-        <Text style={styles.scoreName} numberOfLines={1}>{label}</Text>
-      </View>
+      {hasFooter && <View style={styles.scoreFooter}>{footer}</View>}
     </View>
   );
 });
@@ -128,18 +162,25 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
   },
+  headerWithCardFooters: { height: 96 },
+  multiplayerHeader: { height: 116, flexDirection: "column", alignItems: "stretch" },
+  multiplayerScores: { height: 54, flexDirection: "row", gap: 5, justifyContent: "space-between" },
+  multiplayerCenterRow: { height: 60, alignItems: "center", justifyContent: "center" },
+  multiplayerTurnIndicator: { position: "absolute", left: 4, right: 4, top: 0, alignItems: "center" },
+  multiplayerAccessory: { position: "absolute", top: 1, alignItems: "center", justifyContent: "center" },
   playerScore: {
     width: 116,
     height: 54,
     borderRadius: 8,
     backgroundColor: colors.surface,
     paddingHorizontal: 7,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "transparent",
   },
+  playerScoreWithFooter: { width: 124, height: 87, paddingTop: 4, paddingBottom: 3, justifyContent: "flex-start" },
+  playerScoreCompact: { flex: 1, width: undefined, minWidth: 0, paddingHorizontal: 4, gap: 4 },
+  scoreMain: { width: "100%", minHeight: 42, flexDirection: "row", alignItems: "center", gap: 7 },
   playerScoreReverse: { flexDirection: "row-reverse" },
   playerScoreActive: { borderColor: colors.green },
   scoreAvatar: {
@@ -157,6 +198,7 @@ const styles = StyleSheet.create({
   scoreCopyReverse: { alignItems: "flex-end" },
   scoreName: { color: colors.muted, fontSize: 8, fontWeight: "800", maxWidth: 66 },
   scoreValue: { color: colors.text, fontSize: 20, fontWeight: "800", lineHeight: 22 },
+  scoreFooter: { width: "100%", height: 34, justifyContent: "center" },
   centerColumn: { width: 110, alignItems: "center" },
   centerColumnAccessoryOnly: { height: 54, justifyContent: "center" },
   turnIndicatorSlot: { width: "100%", height: 32, alignItems: "center", justifyContent: "center" },

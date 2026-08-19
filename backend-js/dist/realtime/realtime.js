@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -29,7 +20,7 @@ function attachRealtime(server) {
         cors: { origin: "*" },
         transports: ["websocket", "polling"],
     });
-    io.use((socket, next) => __awaiter(this, void 0, void 0, function* () {
+    io.use(async (socket, next) => {
         const token = typeof socket.handshake.auth.token === "string" ? socket.handshake.auth.token : "";
         const secret = process.env.JWT_SECRET;
         if (!token || !secret)
@@ -40,7 +31,7 @@ function attachRealtime(server) {
                 const gameUserId = Number(decoded.gameUserId);
                 if (!Number.isInteger(gameUserId) || gameUserId <= 0)
                     return next(new Error("unauthorized"));
-                const exists = yield __1.prisma.gameUser.findFirst({ where: { id: gameUserId, kind: "ANONYMOUS" }, select: { id: true } });
+                const exists = await __1.prisma.gameUser.findFirst({ where: { id: gameUserId, kind: "ANONYMOUS" }, select: { id: true } });
                 if (!exists)
                     return next(new Error("unauthorized"));
                 socket.data.userId = null;
@@ -50,15 +41,15 @@ function attachRealtime(server) {
             if (!Number.isInteger(decoded.id) || Number(decoded.id) <= 0)
                 return next(new Error("unauthorized"));
             const userId = Number(decoded.id);
-            const gameUser = yield (0, gameIdentity_1.ensureAccountGameUser)(userId);
+            const gameUser = await (0, gameIdentity_1.ensureAccountGameUser)(userId);
             socket.data.userId = userId;
             socket.data.gameUserId = gameUser.id;
             return next();
         }
-        catch (_a) {
+        catch {
             return next(new Error("unauthorized"));
         }
-    }));
+    });
     io.on("connection", (socket) => {
         if (socket.data.userId)
             void socket.join(userRoom(socket.data.userId));
@@ -69,7 +60,7 @@ function attachRealtime(server) {
 }
 exports.attachRealtime = attachRealtime;
 function emitChatMessage(message) {
-    realtimeServer === null || realtimeServer === void 0 ? void 0 : realtimeServer.to(userRoom(message.recipientId)).emit("chat:message", message);
+    realtimeServer?.to(userRoom(message.recipientId)).emit("chat:message", message);
 }
 exports.emitChatMessage = emitChatMessage;
 function emitGameChanged(game) {
@@ -89,10 +80,10 @@ function emitGameChanged(game) {
             status: game.status,
             changedAt: game.lastActivity.toISOString(),
         };
-        let rooms = realtimeServer === null || realtimeServer === void 0 ? void 0 : realtimeServer.to(gameUserRoom(playerIds[0]));
+        let rooms = realtimeServer?.to(gameUserRoom(playerIds[0]));
         for (const playerId of playerIds.slice(1))
-            rooms = rooms === null || rooms === void 0 ? void 0 : rooms.to(gameUserRoom(playerId));
-        rooms === null || rooms === void 0 ? void 0 : rooms.emit("game:changed", payload);
+            rooms = rooms?.to(gameUserRoom(playerId));
+        rooms?.emit("game:changed", payload);
     }).catch((error) => console.error("Could not emit game update", error));
 }
 exports.emitGameChanged = emitGameChanged;

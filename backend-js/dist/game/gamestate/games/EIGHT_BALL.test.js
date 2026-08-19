@@ -11,7 +11,7 @@ const eightBallPhysicsV7_1 = require("./eightBallPhysicsV7");
 const eightBallPhysicsV8_1 = require("./eightBallPhysicsV8");
 const eightBallPhysicsV9_1 = require("./eightBallPhysicsV9");
 function assertBallsDoNotOverlap(balls) {
-    const diameterSquared = Math.pow((eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS * 2), 2);
+    const diameterSquared = (eightBallPhysics_1.EIGHT_BALL_BALL_RADIUS * 2) ** 2;
     for (let left = 0; left < balls.length; left += 1) {
         if (balls[left].pocketed)
             continue;
@@ -25,11 +25,10 @@ function assertBallsDoNotOverlap(balls) {
     }
 }
 (0, node_test_1.default)("creates a complete, non-overlapping deterministic rack", () => {
-    var _a;
     const state = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
     const rack = (0, eightBallPhysics_1.createEightBallRack)();
     strict_1.default.deepEqual(rack.map((ball) => ball.number), Array.from({ length: 16 }, (_, number) => number));
-    strict_1.default.equal((_a = rack.find((ball) => ball.number === 8)) === null || _a === void 0 ? void 0 : _a.y, 2378);
+    strict_1.default.equal(rack.find((ball) => ball.number === 8)?.y, 2378);
     assertBallsDoNotOverlap(rack);
     strict_1.default.deepEqual(state.pocketedBy, { "1": [], "2": [] });
     strict_1.default.equal(state.physicsVersion, eightBallPhysicsV9_1.EIGHT_BALL_V9_PHYSICS_VERSION);
@@ -45,7 +44,6 @@ function assertBallsDoNotOverlap(balls) {
     }), /physics update required/);
 });
 (0, node_test_1.default)("keeps an existing v6 game on v6 and labels its replay shot", () => {
-    var _a;
     const legacy = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
     legacy.physicsVersion = eightBallPhysics_1.EIGHT_BALL_PHYSICS_VERSION;
     const normalized = (0, EIGHT_BALL_1.normalizeEightBallState)(legacy);
@@ -58,7 +56,7 @@ function assertBallsDoNotOverlap(balls) {
         power: 100,
     });
     strict_1.default.equal(result.state.physicsVersion, eightBallPhysics_1.EIGHT_BALL_PHYSICS_VERSION);
-    strict_1.default.equal((_a = result.state.lastShot) === null || _a === void 0 ? void 0 : _a.physicsVersion, eightBallPhysics_1.EIGHT_BALL_PHYSICS_VERSION);
+    strict_1.default.equal(result.state.lastShot?.physicsVersion, eightBallPhysics_1.EIGHT_BALL_PHYSICS_VERSION);
 });
 (0, node_test_1.default)("keeps an existing v7 game on v7", () => {
     const existing = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
@@ -75,7 +73,7 @@ function assertBallsDoNotOverlap(balls) {
 (0, node_test_1.default)("normalizes legacy pocket history from the last shot", () => {
     const state = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
     state.lastShot = { playerId: 2, power: 600, firstHit: 3, pocketed: [0, 3, 12, 12], foul: null };
-    const legacy = Object.assign({}, state);
+    const legacy = { ...state };
     delete legacy.pocketedBy;
     strict_1.default.deepEqual((0, EIGHT_BALL_1.normalizeEightBallState)(legacy).pocketedBy, { "1": [], "2": [3, 12] });
 });
@@ -83,7 +81,7 @@ function assertBallsDoNotOverlap(balls) {
     const state = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
     state.shotNumber = 4;
     state.lastShot = { playerId: 2, power: 300, firstHit: 6, pocketed: [6], foul: null };
-    const legacy = Object.assign({}, state);
+    const legacy = { ...state };
     delete legacy.recentShots;
     const normalized = (0, EIGHT_BALL_1.normalizeEightBallState)(legacy);
     strict_1.default.equal(normalized.recentShots.length, 1);
@@ -104,7 +102,11 @@ function assertBallsDoNotOverlap(balls) {
     const second = (0, EIGHT_BALL_1.applyEightBallMove)(first, 1, quietShot).state;
     strict_1.default.deepEqual(second.recentShots.map((shot) => shot.shotNumber), [1, 2]);
     strict_1.default.deepEqual(second.recentShots.map((shot) => shot.playerId), [1, 1]);
-    const third = (0, EIGHT_BALL_1.applyEightBallMove)(second, 2, Object.assign(Object.assign({}, quietShot), { cueX: 2500, cueY: 7900 })).state;
+    const third = (0, EIGHT_BALL_1.applyEightBallMove)(second, 2, {
+        ...quietShot,
+        cueX: 2500,
+        cueY: 7900,
+    }).state;
     strict_1.default.deepEqual(third.recentShots.map((shot) => shot.shotNumber), [3]);
     strict_1.default.deepEqual(third.recentShots.map((shot) => shot.playerId), [2]);
 });
@@ -118,7 +120,7 @@ function assertBallsDoNotOverlap(balls) {
     assertBallsDoNotOverlap(first.balls);
 });
 (0, node_test_1.default)("loses a small realistic amount of speed in a head-on ball collision", () => {
-    const balls = (0, eightBallPhysics_1.createEightBallRack)().map((ball) => (Object.assign(Object.assign({}, ball), { pocketed: ![0, 1].includes(ball.number) })));
+    const balls = (0, eightBallPhysics_1.createEightBallRack)().map((ball) => ({ ...ball, pocketed: ![0, 1].includes(ball.number) }));
     Object.assign(balls[0], { x: 2500, y: 7000, pocketed: false });
     Object.assign(balls[1], { x: 2500, y: 6000, pocketed: false });
     const simulation = (0, eightBallPhysics_1.simulateEightBallShot)(balls, { aimX: 0, aimY: -10000, power: 500 }, { captureEvery: 1 });
@@ -134,7 +136,7 @@ function assertBallsDoNotOverlap(balls) {
 });
 (0, node_test_1.default)("requires a clean approach into a side pocket", () => {
     const shotFrom = (y) => {
-        const balls = (0, eightBallPhysics_1.createEightBallRack)().map((ball) => (Object.assign(Object.assign({}, ball), { pocketed: ball.number !== 0 })));
+        const balls = (0, eightBallPhysics_1.createEightBallRack)().map((ball) => ({ ...ball, pocketed: ball.number !== 0 }));
         Object.assign(balls[0], { x: 500, y, pocketed: false });
         return (0, eightBallPhysics_1.simulateEightBallShot)(balls, { aimX: -10000, aimY: 0, power: 80 });
     };
@@ -142,7 +144,7 @@ function assertBallsDoNotOverlap(balls) {
     strict_1.default.equal(shotFrom(5500).events.pocketed.includes(0), false, "an off-centre shot should catch the jaw");
 });
 (0, node_test_1.default)("deflects from cushion faces and their rounded jaw endpoints", () => {
-    const balls = (0, eightBallPhysics_1.createEightBallRack)().map((ball) => (Object.assign(Object.assign({}, ball), { pocketed: ball.number !== 0 })));
+    const balls = (0, eightBallPhysics_1.createEightBallRack)().map((ball) => ({ ...ball, pocketed: ball.number !== 0 }));
     Object.assign(balls[0], { x: 800, y: 800, pocketed: false });
     const simulation = (0, eightBallPhysics_1.simulateEightBallShot)(balls, { aimX: -6000, aimY: -10000, power: 400 }, { captureEvery: 1 });
     const cueFrames = simulation.frames.map((frame) => frame.balls.find((ball) => ball.number === 0));
@@ -163,7 +165,6 @@ function assertBallsDoNotOverlap(balls) {
     strict_1.default.deepEqual(repaired, (0, EIGHT_BALL_1.normalizeEightBallState)(state));
 });
 (0, node_test_1.default)("allows break placement only behind the head line", () => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const state = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
     const result = (0, EIGHT_BALL_1.applyEightBallMove)(state, 1, {
         kind: "shot",
@@ -175,14 +176,14 @@ function assertBallsDoNotOverlap(balls) {
         cueY: 7800,
     });
     strict_1.default.deepEqual({
-        aimX: (_a = result.state.lastShot) === null || _a === void 0 ? void 0 : _a.aimX,
-        aimY: (_b = result.state.lastShot) === null || _b === void 0 ? void 0 : _b.aimY,
-        cueX: (_c = result.state.lastShot) === null || _c === void 0 ? void 0 : _c.cueX,
-        cueY: (_d = result.state.lastShot) === null || _d === void 0 ? void 0 : _d.cueY,
-        power: (_e = result.state.lastShot) === null || _e === void 0 ? void 0 : _e.power,
+        aimX: result.state.lastShot?.aimX,
+        aimY: result.state.lastShot?.aimY,
+        cueX: result.state.lastShot?.cueX,
+        cueY: result.state.lastShot?.cueY,
+        power: result.state.lastShot?.power,
     }, { aimX: 0, aimY: -10000, cueX: 1900, cueY: 7800, power: 100 });
-    strict_1.default.equal((_g = (_f = result.state.lastShot) === null || _f === void 0 ? void 0 : _f.startBalls) === null || _g === void 0 ? void 0 : _g.length, 16);
-    strict_1.default.deepEqual((_j = (_h = result.state.lastShot) === null || _h === void 0 ? void 0 : _h.startBalls) === null || _j === void 0 ? void 0 : _j.find((ball) => ball.number === 0), { number: 0, x: 1900, y: 7800, vx: 0, vy: 0, pocketed: false });
+    strict_1.default.equal(result.state.lastShot?.startBalls?.length, 16);
+    strict_1.default.deepEqual(result.state.lastShot?.startBalls?.find((ball) => ball.number === 0), { number: 0, x: 1900, y: 7800, vx: 0, vy: 0, pocketed: false });
     strict_1.default.throws(() => (0, EIGHT_BALL_1.applyEightBallMove)(state, 1, {
         kind: "shot",
         physicsVersion: eightBallPhysicsV9_1.EIGHT_BALL_V9_PHYSICS_VERSION,
@@ -227,7 +228,6 @@ function assertBallsDoNotOverlap(balls) {
     strict_1.default.equal(result.nextPlayer, 0);
 });
 (0, node_test_1.default)("legally pocketing the 8 ball after clearing your group wins", () => {
-    var _a;
     const state = (0, EIGHT_BALL_1.createEightBallState)(1, 2);
     state.breakShot = false;
     state.groups = { "1": "SOLIDS", "2": "STRIPES" };
@@ -241,6 +241,6 @@ function assertBallsDoNotOverlap(balls) {
     const result = (0, EIGHT_BALL_1.applyEightBallMove)(state, 1, { kind: "shot", physicsVersion: eightBallPhysicsV9_1.EIGHT_BALL_V9_PHYSICS_VERSION, aimX: -10000, aimY: 0, power: 1000 });
     strict_1.default.equal(result.winner, 1);
     strict_1.default.equal(result.nextPlayer, 0);
-    strict_1.default.equal((_a = result.state.lastShot) === null || _a === void 0 ? void 0 : _a.foul, null);
+    strict_1.default.equal(result.state.lastShot?.foul, null);
     strict_1.default.deepEqual(result.state.pocketedBy["1"], [8]);
 });

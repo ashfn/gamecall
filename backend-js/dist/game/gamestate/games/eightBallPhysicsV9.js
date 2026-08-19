@@ -14,7 +14,10 @@ exports.EIGHT_BALL_V9_MAX_SECONDS = eightBallPhysicsV8_1.EIGHT_BALL_V8_MAX_SECON
 exports.EIGHT_BALL_V9_MAX_SHOT_SPEED = eightBallPhysicsV8_1.EIGHT_BALL_V8_MAX_SHOT_SPEED;
 exports.EIGHT_BALL_V9_BALL_DIAMETER_SQUARED = eightBallPhysicsV8_1.EIGHT_BALL_V8_BALL_DIAMETER_SQUARED;
 function simulateEightBallShotV9(inputBalls, shot, options = {}) {
-    return (0, eightBallPhysicsV8_1.simulateEightBallShotV8)(inputBalls, shot, Object.assign(Object.assign({}, options), { authoritativePocketFall: true }));
+    return (0, eightBallPhysicsV8_1.simulateEightBallShotV8)(inputBalls, shot, {
+        ...options,
+        authoritativePocketFall: true,
+    });
 }
 exports.simulateEightBallShotV9 = simulateEightBallShotV9;
 exports.eightBallV9MinimumSeparationSquared = eightBallPhysicsV8_1.eightBallV8MinimumSeparationSquared;

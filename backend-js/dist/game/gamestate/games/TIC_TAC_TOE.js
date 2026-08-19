@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TIC_TAC_TOE = exports.applyTicTacToeMove = exports.findWinningLine = exports.normalizeTicTacToeState = exports.createTicTacToeState = void 0;
 const gamestate_1 = require("../gamestate");
@@ -29,7 +20,6 @@ function createTicTacToeState(player1, player2) {
 }
 exports.createTicTacToeState = createTicTacToeState;
 function normalizeTicTacToeState(raw) {
-    var _a;
     if (!raw || typeof raw !== "object")
         throw new Error("Stored game state is invalid");
     const value = raw;
@@ -40,7 +30,7 @@ function normalizeTicTacToeState(raw) {
     let board;
     const isLegacyBoard = Array.isArray(rawBoard) && rawBoard.length === 3 && Array.isArray(rawBoard[0]);
     // The prototype let the invited player move first; new games let the challenger move first.
-    const xPlayer = isLegacyBoard ? value.player2 : (_a = value.xPlayer) !== null && _a !== void 0 ? _a : value.player1;
+    const xPlayer = isLegacyBoard ? value.player2 : value.xPlayer ?? value.player1;
     if (xPlayer !== value.player1 && xPlayer !== value.player2)
         throw new Error("Stored marks are invalid");
     if (isLegacyBoard) {
@@ -108,7 +98,7 @@ function applyTicTacToeMove(rawState, userId, cell) {
     const winningLine = findWinningLine(board);
     const moveCount = state.moveCount + 1;
     return {
-        state: Object.assign(Object.assign({}, state), { board, moveCount, winningLine }),
+        state: { ...state, board, moveCount, winningLine },
         winner: winningLine ? userId : moveCount === 9 ? -1 : 0,
         nextPlayer: winningLine || moveCount === 9
             ? 0
@@ -118,24 +108,20 @@ function applyTicTacToeMove(rawState, userId, cell) {
 exports.applyTicTacToeMove = applyTicTacToeMove;
 // Kept as a pure adapter for the prototype's older game registry.
 exports.TIC_TAC_TOE = {
-    init(user1, user2) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return createTicTacToeState(user1, user2);
-        });
+    async init(user1, user2) {
+        return createTicTacToeState(user1, user2);
     },
-    processMove(state, userId, move) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const result = applyTicTacToeMove(state, userId, move.actions[0]);
-                return {
-                    status: result.winner === 0 ? gamestate_1.GameMoveStatus.ACCEPTED : gamestate_1.GameMoveStatus.ENDED,
-                    state: result.state,
-                    game: null,
-                };
-            }
-            catch (_a) {
-                return { status: gamestate_1.GameMoveStatus.INVALID, state, game: null };
-            }
-        });
+    async processMove(state, userId, move) {
+        try {
+            const result = applyTicTacToeMove(state, userId, move.actions[0]);
+            return {
+                status: result.winner === 0 ? gamestate_1.GameMoveStatus.ACCEPTED : gamestate_1.GameMoveStatus.ENDED,
+                state: result.state,
+                game: null,
+            };
+        }
+        catch {
+            return { status: gamestate_1.GameMoveStatus.INVALID, state, game: null };
+        }
     },
 };
